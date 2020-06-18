@@ -1,0 +1,18 @@
+# Created by .ignore support plugin (hsz.mobi)
+.idea/
+.vscode/
+**/__pycache__/**
+**/.ipynb_checkpoints/**
+**/.pytest_cache/**
+**/lightning_logs/**
+**/.vector_cache/**
+
+**/completions/
+**/export
+results/
+labeling_project/
+*.model
+embeddings/
+data/
+tt_logs/
+*.ckpt

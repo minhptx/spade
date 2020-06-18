@@ -1,0 +1,16 @@
+embedding_size: 300
+char_embedding_size: 50
+hidden_size: 32
+latent_size: 128
+d_latent_size: 128
+batch_size: 16
+max_length: 80
+max_char_length: 20
+num_class: 2
+num_kernels: 100
+dropout: 0.5
+lambda_adv: 0.5
+lambda_p: 0.5
+head_size: 2
+num_layers: 2
+emb_path: /home/clapika/Projects/datasets/word_embedding/glove.6B

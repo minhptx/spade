@@ -1,0 +1,17 @@
+batch_size: 1024
+hidden_enc_dim: 64
+hidden_dec_dim: 64
+char_emb_dim: 32
+latent_dim: 32
+dropout_p: 0.2
+bi_mode: 2
+rnn_dir: 2
+n_layers: 1
+cond_gen: true
+lr: 0.01
+r_step: 0.99995
+eta_min: 0.01
+kl_tolerance: 0.2
+weight_kl: 0.5
+gpus: [0, 1, 2, 3]
+emb_path: /home/clapika/Projects/datasets/word_embedding/glove.6B
