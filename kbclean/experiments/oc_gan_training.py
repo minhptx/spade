@@ -47,40 +47,6 @@ class ReconstructionCallback(Callback):
         self.step += 1
 
 
-def split_tran_test_dls(string_data, collate_fn, batch_size):
-    train_length = int(len(string_data) * 0.7)
-    val_length = int(len(string_data) * 0.2)
-    train_dataset, val_dataset, test_dataset = random_split(
-        list(string_data),
-        [
-            train_length, val_length,
-            len(string_data) - train_length - val_length
-        ],
-    )
-
-    train_dl = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        collate_fn=collate_fn,
-        num_workers=16,
-    )
-    val_dl = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        collate_fn=collate_fn,
-        num_workers=16,
-    )
-
-    test_dl = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        collate_fn=collate_fn,
-        num_workers=16,
-    )
-
-    return train_dl, val_dl, test_dl
-
-
 def collate_fn_no_labels(batch, char_encoder):
     inputs, lengths = char_encoder.batch_encode(batch)
     return inputs, lengths, batch
@@ -117,7 +83,7 @@ if __name__ == "__main__":
         partial_collate_fn = partial(collate_fn_no_labels,
                                      char_encoder=character_encoder)
 
-        train_dataloader, val_dataloader, test_dataloader = split_tran_test_dls(
+        train_dataloader, val_dataloader, test_dataloader = split_train_test_dls(
             data, partial_collate_fn, hparams_seq2seq.batch_size)
 
         hparams_seq2seq.vocab_size = character_encoder.vocab_size
@@ -144,6 +110,7 @@ if __name__ == "__main__":
         print("Finish training seq2seq model. Testing seq2seq model...")
 
         # print(trainer.test(encoder, test_dataloaders=[test_dataloader]))
+        trainer.save_checkpoint("models/seq2seq.ckpt")
 
         partial_collate_fn = partial(collate_fn_no_labels_cuda,
                                      char_encoder=character_encoder)

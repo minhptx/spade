@@ -282,15 +282,6 @@ class SeqGAN(LightningModule):
             },
         )
 
-    def training_epoch_end(self, outputs: list):
-        avg_loss = torch.stack([x["train_loss"] for x in outputs]).mean()
-        avg_acc = torch.stack([x["train_acc"] for x in outputs]).mean()
-        logs = {
-            "metrics/train_loss": avg_loss,
-            "metrics/train_acc": avg_acc,
-        }
-        return {"avg_train_loss": avg_loss, "log": logs, "progress_bar": logs}
-
     def configure_optimizers(self):
         return (
             [

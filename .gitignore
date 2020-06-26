@@ -9,10 +9,12 @@
 
 **/completions/
 **/export
-results/
+
 labeling_project/
-*.model
 embeddings/
-data/
+results/
 tt_logs/
+data/
+
+*.model
 *.ckpt

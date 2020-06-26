@@ -42,21 +42,6 @@ class RGANDiscriminator(BaseModule):
         acc = (y_pred == y).sum().float() / y.shape[0]
         return {"val_loss": loss, "val_acc": acc}
 
-    def training_epoch_end(self, outputs: list):
-        avg_loss = torch.stack([x["train_loss"] for x in outputs]).mean()
-        avg_acc = torch.stack([x["train_acc"] for x in outputs]).mean()
-        logs = {
-            "train/loss": avg_loss,
-            "train/acc": avg_acc,
-        }
-        return {"avg_train_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-    def validation_epoch_end(self, outputs: list):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        avg_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
-        logs = {"val/loss": avg_loss, "val/acc": avg_acc, "val_loss": avg_loss}
-        return {"avg_val_loss": avg_loss, "log": logs, "progress_bar": logs}
-
     def configure_optimizers(self):
         return [optim.Adam(self.parameters(), lr=self.hparams.lr)]
 

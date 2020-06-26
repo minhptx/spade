@@ -200,21 +200,3 @@ class VSeq2Seq(Seq2Seq):
         acc = prediction.eq(trg).masked_select(mask).sum().float() / mask.sum()
 
         return {"val_loss": loss, "val_acc": acc}
-
-    def training_epoch_end(self, outputs: list):
-        avg_loss = torch.stack([x["train_loss"] for x in outputs]).mean()
-        avg_acc = torch.stack([x["train_acc"] for x in outputs]).mean()
-        avg_kl_loss = torch.stack([x["train_kl_loss"] for x in outputs]).mean()
-        logs = {
-            "train_loss": avg_loss,
-            "train/loss": avg_loss,
-            "train/acc": avg_acc,
-            "train/kl_loss": avg_kl_loss,
-        }
-        return {"avg_train_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-    def validation_epoch_end(self, outputs: list):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        avg_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
-        logs = {"val/loss": avg_loss, "val/acc": avg_acc, "val_loss": avg_loss}
-        return {"avg_val_loss": avg_loss, "log": logs, "progress_bar": logs}

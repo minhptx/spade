@@ -3,6 +3,7 @@ import random
 from argparse import Namespace
 from functools import partial
 
+import dill as pickle
 import numpy as np
 import pandas as pd
 import torch
@@ -100,10 +101,13 @@ if __name__ == "__main__":
     hparams_seq2seq = Namespace(**hparams)
     print("Data is not encoded. Training seq2seq model...")
 
-    data = (pd.read_csv(args.input_file, keep_default_na=False)["data"].apply(
-        lambda x: "^" + x[:100]).values.tolist())
+    data = (pd.read_csv(args.input_file,
+                        keep_default_na=False).iloc[:, 0].apply(
+                            lambda x: "^" + x[:100]).values.tolist())
 
     character_encoder = CharacterEncoder(data, append_eos=True)
+
+    pickle.dump(character_encoder, open("models/seq2seq_encoder.pkl", "wb"))
 
     partial_collate_fn = partial(collate_fn_no_labels,
                                  char_encoder=character_encoder)
@@ -125,7 +129,7 @@ if __name__ == "__main__":
                                    character_encoder),
         ],
         logger=MetricsTensorBoardLogger("tt_logs", "seq2seq"),
-        max_epochs=100,
+        max_epochs=20,
     )
     trainer.fit(seq2seq,
                 train_dataloader=train_dataloader,
@@ -134,6 +138,8 @@ if __name__ == "__main__":
     print("Finish training seq2seq model. Testing seq2seq model...")
 
     # print(trainer.test(encoder, test_dataloaders=[test_dataloader]))
+
+    trainer.save_checkpoint("models/seq2seq.ckpt")
 
     partial_collate_fn = partial(collate_fn_no_labels_cuda,
                                  char_encoder=character_encoder)
