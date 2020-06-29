@@ -7,7 +7,6 @@ from tokenizers.processors import BertProcessing
 
 from cleaning.detector import Detector
 from evaluation.evaluator import Evaluator
-from models.auto_encoder import VSeq2Seq
 from models.language_modeler import BertLanguageModel, RNNLanguageModel
 
 parser = ArgumentParser()
