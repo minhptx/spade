@@ -19,9 +19,9 @@ if __name__ == "__main__":
     sc = SparkContext("local[*]")
     spark = SparkSession(sc)
     # spark.sparkContext.setLogLevel("WARN")
-    df = spark.read.format("csv").option("header", "true").load("data/raw/sherlock/1*.csv")
-    udf_eval = udf(lambda x: eval_with_catch(x), ArrayType(StringType()))
-    udf_clean = udf(lambda x: clean_str(x), StringType())
+    df = spark.read.format("csv").option("header", "true").load("data/raw/sherlock/*.csv")
+    udf_eval = udf(eval_with_catch, ArrayType(StringType()))
+    udf_clean = udf(clean_str, StringType())
 
     df = df.withColumn("data", udf_eval("data"))
     df = df.withColumn("data", explode("data"))

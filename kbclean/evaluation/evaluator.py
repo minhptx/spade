@@ -14,17 +14,20 @@ class Evaluator:
 
         groundtruth = []
 
-        with open(self.debug_file, "w") as f:
-            writer = csv.writer(f)
-            for tup in zip(raw_strings, cleaned_strings, predictions):
-                writer.writerow(
-                    [tup[1]] + list(tup[2]) + [(tup[0] != tup[1]) and tup[2][2] == False]
-                )
-
         for idx, r_string in enumerate(raw_strings):
             if r_string != cleaned_strings[idx]:
                 groundtruth.append(True)
             else:
                 groundtruth.append(False)
 
-        print(classification_report(groundtruth, [x[2] for x in predictions]))
+        with open(self.debug_file, "w") as f:
+            writer = csv.writer(f)
+            for raw_string, cleaned_string, gt, prediction in zip(
+                raw_strings, cleaned_strings, groundtruth, predictions
+            ):
+                if gt != prediction:
+                    writer.writerow(
+                        [cleaned_string, raw_string, groundtruth, prediction]
+                    )
+
+        print(classification_report(groundtruth, predictions))

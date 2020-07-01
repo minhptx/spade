@@ -1,12 +1,14 @@
 from typing import List
-
+import pandas as pd
+import spacy
 import numpy as np
-from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
+from sklearn.feature_extraction import DictVectorizer
 from sklearn.svm import OneClassSVM
+import regex as re
 
 
-class Detector:
+class DeepDetector:
     def __init__(
         self, hparams, lm_model, outlier_method="SVM", error_method="",
     ):
@@ -27,8 +29,6 @@ class Detector:
 
         for i in range(0, len(strings), self.hparams.batch_size):
             self.lm_model.predict(strings[i : i + self.hparams.batch_size])
-            print(tensor)
-            tensors.append(tensor)
 
         outputs = self.outlier_model.fit_predict((np.concatenate(tensors, axis=0)))
 
@@ -50,7 +50,7 @@ class Detector:
         probs = np.concatenate(tensors, axis=0).reshape(-1, 1)
         preds = self.outlier_model.fit_predict(probs)
 
-        return zip(strings, probs[:, 0], preds == -1)
+        return preds == -1
 
     def detect(self, strings: List[str]):
         # errors = self.detect_outliers(strings)

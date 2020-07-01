@@ -5,7 +5,7 @@ import pandas as pd
 from tokenizers import ByteLevelBPETokenizer
 from tokenizers.processors import BertProcessing
 
-from cleaning.detector import Detector
+from cleaning.detection.deep import Detector
 from evaluation.evaluator import Evaluator
 from models.language_modeler import BertLanguageModel, RNNLanguageModel
 
