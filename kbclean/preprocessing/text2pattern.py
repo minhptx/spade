@@ -1,8 +1,7 @@
 import regex as re
-from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf
-from pyspark.sql.types import StringType
+from pyspark.sql.functions import explode, udf
+from pyspark.sql.types import ArrayType, StringType
 
 
 def to_regex(x):
@@ -18,14 +17,28 @@ def to_regex(x):
         return x
 
 
-if __name__ == "__main__":
-    sc = SparkContext("local[*]")
-    spark = SparkSession(sc)
+def all_substrings(x):
+    substrings = []
+    for i in range(len(x)):
+        for j in range(i, len(x)):
+            substrings.append(x[i:j])
+    return substrings
 
-    df = spark.read.format("csv").option("header", "true").load("data/all.csv")
-    regex_udf = udf(to_regex, StringType())
-    df = df.withColumn("pattern", regex_udf("data"))
-    count_df = df.groupBy("pattern").count()
-    count_df.coalesce(1).write.option("header", "true").mode("overwrite").csv(
-        "data/pattern.csv"
+
+if __name__ == "__main__":
+    spark = (
+        SparkSession.builder.master("local[*]")
+        .config("spark.driver.memory", "24g")
+        .appName("my-cool-app")
+        .getOrCreate()
     )
+
+    df = spark.read.format("csv").option("header", "true").load("data/train/webtables/data/*.csv")
+    regex_udf = udf(to_regex, StringType())
+    substrs_udf = udf(all_substrings, ArrayType(StringType()))
+    df = df.withColumn("pattern", regex_udf("data"))
+    df = df.withColumn("pattern", substrs_udf("pattern"))
+    df = df.withColumn("pattern", explode("pattern"))
+
+    count_df = df.groupBy("pattern").count()
+    count_df.coalesce(1).write.option("header", "true").mode("overwrite").csv("data/pattern.csv")

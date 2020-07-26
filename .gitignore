@@ -15,6 +15,9 @@ embeddings/
 results/
 tt_logs/
 data/
+dask-worker-space/
+debug/
+output/
 
 *.model
 *.ckpt

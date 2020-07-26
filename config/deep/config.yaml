@@ -1,0 +1,4 @@
+save_path: saved_models/deep
+train_path: data/test/ed2
+vocab_path: data/train/webtables/all.csv
+detection_method: RF

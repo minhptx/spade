@@ -1,0 +1,3 @@
+config:
+    batch_size: 32
+    save_path: saved_models/stats
