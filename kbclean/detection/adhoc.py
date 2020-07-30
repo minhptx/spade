@@ -1,9 +1,10 @@
+from kbclean.utils.es.query import ESQuery
 from typing import List
 
 import pandas as pd
 import regex as re
 import spacy
-from nltk.util import trigrams
+from nltk.util import ngrams, trigrams
 from sklearn.ensemble import IsolationForest
 from sklearn.feature_extraction import DictVectorizer
 
@@ -18,25 +19,12 @@ regex_dict = {
 }
 
 
-def _default_featurize(str_):
-    feature_dict = {}
-    count = 0
-    while str_:
-        count += 1
-        for name, pattern in regex_dict.items():
-            match = re.match(f"^{pattern}", str_)
-            if match:
-                feature_dict[f"{name}_{count}"] = 1
-                str_ = str_[match.end() :]
-                break
-        else:
-            feature_dict[f"{str_[0]}_{count}"] = 1
-            str_ = str_[1:]
-    return feature_dict
-
-
 def _ngram_featurize(str_):
     feature_dict = {}
+    if len(str_) <= 3:
+        feature_dict[f"{str_}"] = 1
+        feature_dict[f"{str2regex(str_)}"] = 1
+
     for trigram in trigrams(str_):
         feature_dict[f"{''.join(trigram)}"] = 1
 
@@ -46,19 +34,37 @@ def _ngram_featurize(str_):
     return feature_dict
 
 
-class StatsDetector(BaseDetector):
-    def __init__(self, hparams, featurize_func=_ngram_featurize):
-        self.hparams = hparams
+class NgramChecker:
+    def __init__(self, host):
+        self.es_query = ESQuery.get_instance(host)
+        self.ngram2threshold = {2: 100, 3: 10, 4: 5}
+
+    @staticmethod
+    def get_ngrams(str, n):
+        try:
+            return ngrams(list(str), n)
+        except:
+            return [str]
+
+    def check_str(self, str):
+        for i in [2, 3, 4]:
+            ngrams = NgramChecker.get_ngrams(str)
+            for ngram in ngrams:
+                if ESQuery.get_char_ngram_count(ngram) < self.ngram2threshold[i]:
+                    return False
+        return True
+
+
+class AdhocDetector(BaseDetector):
+    def __init__(self, host, featurize_func=_ngram_featurize):
 
         self.vectorizer = DictVectorizer()
         self.outlier_detector = IsolationForest()
         self.featurize_func = featurize_func
 
+        self.ngram_checker = NgramChecker(host)
+
         self.word2vec = spacy.load("en_core_web_lg")
-        pattern2count = pd.read_csv(
-            f"{self.hparams.save_path}/pattern2count.csv", error_bad_lines=False
-        )
-        self.pattern2count = dict(zip(pattern2count.pattern, pattern2count["count"]))
 
     def prepare(self):
         pass
@@ -67,10 +73,14 @@ class StatsDetector(BaseDetector):
         features = map(self.featurize_func, values)
         return features
 
+    def save(self, save_path):
+        pass
+
     def detect_outliers(self, values: List[str]):
         # if len(values) < 10:
         #     return [False for _ in range(len(values))]
-        feature_dicts = map(self.featurize_func, values)
+        feature_dicts = list(map(self.featurize_func, values))
+        print(values, feature_dicts)
         feature_vecs = self.vectorizer.fit_transform(feature_dicts)
         outliers = self.outlier_detector.fit_predict(feature_vecs)
         outlier_results = []
@@ -93,20 +103,20 @@ class StatsDetector(BaseDetector):
         return null_results
 
     def detect_errors(self, values: List[str]):
-        patterns = map(str2regex, values)
+        # patterns = map(str2regex, values)
         error_results = []
-        for index, pattern in enumerate(patterns):
-            if self.pattern2count.get(pattern, 0) < 10:
+        for index, value in enumerate(values):
+            if self.ngram_checker(value):
                 error_results.append(False)
             else:
                 error_results.append(True)
         return error_results
 
     def detect_values(self, values):
-        # errors = self.detect_outliers(values)
+        errors = self.detect_outliers(values)
         outliers = self.detect_outliers(values)
-        # nulls = self.detect_null(values)
-        return [x for x in outliers]
+        nulls = self.detect_null(values)
+        return [all(x) for x in zip(errors, nulls)]
 
     def detect(self, df):
         result_df = df.copy()
