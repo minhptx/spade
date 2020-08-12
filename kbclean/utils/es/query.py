@@ -1,34 +1,87 @@
-from elasticsearch import Elasticsearch
+import itertools
+import json
+from collections import defaultdict
+
+from elasticsearch import AsyncElasticsearch, Elasticsearch
+
+from kbclean.utils.data.helpers import str2regex
 
 
 class ESQuery:
     instance = None
 
-    def __init__(self, host):
-        self.es = Elasticsearch(host)
+    def __init__(self, host, port, is_async=False):
+        self.es = Elasticsearch([host], port=port)
 
     @staticmethod
-    def get_results(es_resp, field):
-        return [x["_source"][field] for x in es_resp["hits"]["hits"]][0]
+    def get_results(es_resp, field, default_value=None):
+        try:
+            return [x["_source"][field] for x in es_resp["hits"]["hits"]][0]
+        except IndexError as e:
+            return default_value
 
     @staticmethod
-    def get_instance(host):
+    def get_instance(host, port):
         if ESQuery.instance is None:
-            ESQuery.instance = ESQuery(host)
+            ESQuery.instance = ESQuery(host, port)
         return ESQuery.instance
 
-    def get_char_ngram_count(self, ngram):
-        return ESQuery.get_results(self.es.search(
-            {"query": {"term": {"data.keyword": {"value": ngram}}}}, index="char_ngram"
-        ), "count")
+    def get_char_ngram_counts(self, ngrams):
+        query = "{}\n" + "\n{}\n".join(
+            [
+                json.dumps({"query": {"term": {"data": {"value": ngram}}}})
+                for ngram in ngrams
+            ]
+        )
+        return [
+            ESQuery.get_results(resp, "count", default_value=0)
+            for resp in self.es.msearch(query, index="char_ngram")["responses"]
+        ]
 
-    def get_tok_ngram_count(self, ngram):
-        return ESQuery.get_results(self.es.search(
-            {"query": {"term": {"data.keyword": {"value": ngram}}}}, index="tok_ngram"
-        ), "count")
+    def get_tok_ngram_counts(self, ngrams):
+        query = "{}\n" + "\n{}\n".join(
+            [
+                json.dumps({"query": {"term": {"data": {"value": ngram}}}})
+                for ngram in ngrams
+            ]
+        )
+        return [
+            ESQuery.get_results(resp, "count", default_value=0)
+            for resp in self.es.msearch(query, index="tok_ngram")["responses"]
+        ]
 
-    # def get_coexist_count(self, str1, str2):
-    #     return self.es.search(
-    #         {"query": {"term": {"data.keyword": {"value": ngram}}}}, index="tok_ngram"
-    #     )
+    def get_coexist_counts(self, values):
+        set_values = set(values)
+        query = "{}\n" + "\n{}\n".join(
+            [
+                json.dumps(
+                    {
+                        "query": {
+                            "term": {
+                                "data": {
+                                    "value": str2regex(val, match_whole_token=True)
+                                }
+                            }
+                        }
+                    }
+                )
+                for val in set_values
+            ]
+        )
+        mresult = self.es.msearch(query, index="n_reversed_indices")
+        print(mresult["responses"][0])
 
+        indices_list = [ESQuery.get_results(res, "idx") for res in mresult["responses"]]
+
+        coexist_count = defaultdict(lambda: {})
+
+        for idx1, val1 in enumerate(values):
+            for idx2, val2 in enumerate(values):
+                if indices_list[idx1] is None or indices_list[idx2] is None:
+                    coexist_count[val1][val2] = 0
+                else:
+                    coexist_count[val1][val2] = set(indices_list[idx1]).intersection(
+                        indices_list[idx2]
+                    )
+
+        return coexist_count

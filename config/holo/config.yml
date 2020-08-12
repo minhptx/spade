@@ -1,0 +1,2 @@
+embedding_path: embeddings/en_vectors_ft_lg
+save_path: saved_models/active

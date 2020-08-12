@@ -14,8 +14,7 @@ ENV PATH="/home/worker/.local/bin:${PATH}"
 
 RUN conda env create -f /app/environment.yml
 RUN sed -i '$ d' ~/.bashrc && \
-    echo "conda activate mintdt" >> ~/.bashrc
-RUN bash -c 'source ~/.bashrc && conda activate mintdt'
+    echo "conda activate torch" >> ~/.bashrc
 
 RUN python -m spacy download en_core_web_lg
 # Bundle app source

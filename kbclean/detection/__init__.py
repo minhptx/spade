@@ -1,4 +1,3 @@
-from .base import BaseDetector, BaseModule
-from .bert import BertDetector
-from .deep import DeepDetector
+from .active import DistanceActiveDetector, HoloActiveDetector
 from .adhoc import AdhocDetector
+from .base import BaseDetector, BaseModule

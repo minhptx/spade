@@ -1,3 +1,4 @@
+from kbclean.utils.data.helpers import str2regex
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import explode, udf
@@ -14,19 +15,7 @@ def eval_with_catch(x):
 
 def clean_str(x):
     x = x.strip().encode("ascii", "ignore").decode("ascii")
-    return str2regex(x)
-
-
-def str2regex(x):
-    try:
-        if x is None:
-            return ""
-        x = re.sub(r"[A-Z]+", "A", x)
-        x = re.sub(r"[0-9]+", "0", x)
-        x = re.sub(r"[a-z]+", "a", x)
-        return x
-    except Exception as e:
-        return x
+    return str2regex(x, True)
 
 
 if __name__ == "__main__":

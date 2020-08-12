@@ -1,0 +1,7 @@
+emb_dim: 300
+hid_dim: 128
+out_dim: 10
+n_layers: 1
+dropout: 0.2
+bidirection: True
+lr: 0.005

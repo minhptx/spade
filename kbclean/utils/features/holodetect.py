@@ -3,48 +3,35 @@ from collections import Counter
 
 import numpy as np
 import regex as re
-from nltk import trigrams, wordpunct_tokenize
+from nltk import ngrams, wordpunct_tokenize
+from regex.regex import match
+
+from kbclean.utils.data.helpers import str2regex
 
 
-
-def str2regex(x):
-    if x is None:
-        return ""
-    x = re.sub(r"[A-Z]", "A", x)
-    x = re.sub(r"[a-z]", "a", x)
-    x = re.sub(r"[0-9]", "0", x)
-    return x
-
-
-def char_fasttext(values, model):
-    def get_feature(v):
-        return np.mean([model[c] for c in v])
-
-    return [get_feature(val) for val in values]
-
-
-def word_fasttext(values, model):
-    def get_feature(v):
-        return np.mean([model[w] for w in wordpunct_tokenize(v)])
-
-    return [get_feature(val) for val in values]
+def xngrams(value, n):
+    value = "^" + value + "$"
+    try:
+        return list(set(ngrams(value, n)))
+    except:
+        return ["^$"]
 
 
 def val_trigrams(values):
-    val_trigrams = [[''.join(x) for x in list(trigrams(val))] for val in values]
+    val_trigrams = [["".join(x) for x in list(xngrams(val, 3))] for val in values]
     ngrams = itertools.chain.from_iterable(val_trigrams)
     counter = Counter(ngrams)
     sum_count = sum(counter.values())
 
     res = [
-        min([counter[gram] for gram in trigram]) / sum_count if trigram else 0 * 1.0
+        (min([counter[gram] for gram in trigram]) / sum_count if trigram else 0) * 1.0
         for trigram in val_trigrams
     ]
     return res
 
 
 def sym_trigrams(values):
-    patterns = list(map(str2regex, values))
+    patterns = list(map(lambda x: str2regex(x, False), values))
     return val_trigrams(patterns)
 
 
@@ -55,7 +42,7 @@ def value_freq(values):
 
 
 def sym_value_freq(values):
-    patterns = list(map(str2regex, values))
+    patterns = list(map(lambda x: str2regex(x, True), values))
 
     return value_freq(patterns)
 

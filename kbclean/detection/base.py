@@ -19,14 +19,19 @@ class BaseDetector(metaclass=ABCMeta):
     def detect(self, df: pd.DataFrame):
         pass
 
+
+class Module(metaclass=ABCMeta):
+    @abstractmethod
+    def fit(self, train_path):
+        pass
+
     @abstractmethod
     def save(self, save_path):
         pass
 
     @staticmethod
-    def load(load_path, hparams):
+    def load(load_path):
         pass
-
 
 class BaseModule(LightningModule):
     def on_train_start(self):
@@ -49,21 +54,6 @@ class BaseModule(LightningModule):
         avg_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
         logs = {"val_loss": avg_loss, "val_acc": avg_acc}
         return {"avg_val_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-
-class Module(metaclass=ABCMeta):
-    @abstractmethod
-    def fit(self, train_path):
-        pass
-
-    @abstractmethod
-    def save(self, save_path):
-        pass
-
-    @staticmethod
-    def load(load_path):
-        pass
-
 
 class Pipeline:
     def __init__(self, modules, hparams):

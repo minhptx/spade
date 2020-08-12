@@ -33,7 +33,7 @@ class BertClassification(BertModel):
         )
 
 
-class TransformLearner:
+class TransLearner:
     def __init__(self, hparams, tokenizer):
         self.hparams = hparams
         self.tokenizer = tokenizer

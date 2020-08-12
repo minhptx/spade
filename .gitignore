@@ -1,11 +1,13 @@
 # Created by .ignore support plugin (hsz.mobi)
 .idea/
 .vscode/
+.data/
 **/__pycache__/**
 **/.ipynb_checkpoints/**
 **/.pytest_cache/**
 **/lightning_logs/**
 **/.vector_cache/**
+**/dask-worker-space/**
 
 **/completions/
 **/export
@@ -15,9 +17,9 @@ embeddings/
 results/
 tt_logs/
 data/
-dask-worker-space/
 debug/
 output/
 
 *.model
 *.ckpt
+*.log

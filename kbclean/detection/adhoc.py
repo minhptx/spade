@@ -1,15 +1,14 @@
-from kbclean.utils.es.query import ESQuery
 from typing import List
 
 import pandas as pd
-import regex as re
 import spacy
 from nltk.util import ngrams, trigrams
 from sklearn.ensemble import IsolationForest
 from sklearn.feature_extraction import DictVectorizer
 
-from kbclean.detection import BaseDetector
+from kbclean.detection.base import BaseDetector
 from kbclean.utils.data.helpers import str2regex
+from kbclean.utils.es.query import ESQuery
 
 regex_dict = {
     "digit": r"[-+]?[0-9]+",
@@ -23,20 +22,20 @@ def _ngram_featurize(str_):
     feature_dict = {}
     if len(str_) <= 3:
         feature_dict[f"{str_}"] = 1
-        feature_dict[f"{str2regex(str_)}"] = 1
+        feature_dict[f"{str2regex(str_, False)}"] = 1
 
     for trigram in trigrams(str_):
         feature_dict[f"{''.join(trigram)}"] = 1
 
-    for trigram in trigrams(str2regex(str_)):
+    for trigram in trigrams(str2regex(str_, False)):
         feature_dict[f"pattern_{''.join(trigram)}"] = 1
 
     return feature_dict
 
 
 class NgramChecker:
-    def __init__(self, host):
-        self.es_query = ESQuery.get_instance(host)
+    def __init__(self, host, port):
+        self.es_query = ESQuery.get_instance(host, port)
         self.ngram2threshold = {2: 100, 3: 10, 4: 5}
 
     @staticmethod
@@ -50,19 +49,19 @@ class NgramChecker:
         for i in [2, 3, 4]:
             ngrams = NgramChecker.get_ngrams(str)
             for ngram in ngrams:
-                if ESQuery.get_char_ngram_count(ngram) < self.ngram2threshold[i]:
+                if ESQuery.get_char_ngram_counts(ngram) < self.ngram2threshold[i]:
                     return False
         return True
 
 
 class AdhocDetector(BaseDetector):
-    def __init__(self, host, featurize_func=_ngram_featurize):
+    def __init__(self, hparams, featurize_func=_ngram_featurize):
 
         self.vectorizer = DictVectorizer()
         self.outlier_detector = IsolationForest()
         self.featurize_func = featurize_func
 
-        self.ngram_checker = NgramChecker(host)
+        self.ngram_checker = NgramChecker(hparams.es_host, hparams.es_port)
 
         self.word2vec = spacy.load("en_core_web_lg")
 
@@ -77,10 +76,7 @@ class AdhocDetector(BaseDetector):
         pass
 
     def detect_outliers(self, values: List[str]):
-        # if len(values) < 10:
-        #     return [False for _ in range(len(values))]
         feature_dicts = list(map(self.featurize_func, values))
-        print(values, feature_dicts)
         feature_vecs = self.vectorizer.fit_transform(feature_dicts)
         outliers = self.outlier_detector.fit_predict(feature_vecs)
         outlier_results = []
@@ -103,7 +99,6 @@ class AdhocDetector(BaseDetector):
         return null_results
 
     def detect_errors(self, values: List[str]):
-        # patterns = map(str2regex, values)
         error_results = []
         for index, value in enumerate(values):
             if self.ngram_checker(value):
