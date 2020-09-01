@@ -8,7 +8,7 @@ from sklearn.feature_extraction import DictVectorizer
 
 from kbclean.detection.base import BaseDetector
 from kbclean.utils.data.helpers import str2regex
-from kbclean.utils.es.query import ESQuery
+from kbclean.utils.search.query import ESQuery
 
 regex_dict = {
     "digit": r"[-+]?[0-9]+",

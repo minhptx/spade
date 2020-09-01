@@ -1,3 +1,3 @@
-from .active import DistanceActiveDetector, HoloActiveDetector
+from .active import HoloDetector, DistanceDetector, LSTMDetector
 from .adhoc import AdhocDetector
-from .base import BaseDetector, BaseModule
+from .base import BaseDetector, ActiveDetector

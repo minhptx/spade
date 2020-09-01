@@ -1,10 +1,9 @@
-from logging import exception
 import random
 from collections import Counter
 from difflib import SequenceMatcher
+from typing import List, Tuple
 
-import regex as re
-from numpy.lib.function_base import append
+from loguru import logger
 
 
 class TransformationRule:
@@ -25,7 +24,7 @@ class TransformationRule:
                 )
         return str_value.replace(self.before_str, self.after_str)
 
-    def __eq__(self, o: 'TransformationRule'):
+    def __eq__(self, o: "TransformationRule"):
         return self.before_str == o.before_str and self.after_str == o.after_str
 
     def __hash__(self) -> int:
@@ -88,7 +87,7 @@ class NoisyChannel:
             valid_trans.extend(self.learn_transformation(lev, lcv))
             valid_trans.extend(self.learn_transformation(rev, rcv))
 
-        elif self.similarity(lcv, lev) + self.similarity(rcv, rev) <= self.similarity(
+        if self.similarity(lcv, lev) + self.similarity(rcv, rev) <= self.similarity(
             lcv, rev
         ) + self.similarity(rcv, lev):
             if lcv or rev:
@@ -100,7 +99,7 @@ class NoisyChannel:
 
         return list(set(valid_trans))
 
-    def transformation_distribution(self, string_pairs):
+    def fit(self, string_pairs):
         transforms = []
         for error_str, cleaned_str in string_pairs:
             transforms.extend(self.learn_transformation(error_str, cleaned_str))
@@ -121,3 +120,86 @@ class NoisyChannel:
         sum_prob = sum(noisy_policy.values)
         noisy_policy = list(map(lambda x: (x[0], x[1] / sum_prob)))
         return noisy_policy
+
+
+class NCGenerator:
+    def __init__(self):
+        self.trans_learner = NoisyChannel()
+
+    
+    def _check_exceptions(self, str1, exceptions):
+        for exception in exceptions:
+            if exception in str1:
+                return exception
+        return False
+
+
+    def _generate_transformed_data(
+        self, rule2prob, values: List[str], cleaned_strs: List[str]
+    ):
+        examples = []
+        wait_time = 0
+
+        exceptions = [
+            x.after_str
+            for x in rule2prob.keys()
+            if x.after_str and x.after_str not in cleaned_strs
+        ]
+        
+        exception_hits = []
+
+        while len(examples) < len(values) and wait_time <= 10 * len(values):
+            val = random.choice(values)
+
+            probs = []
+            rules = []
+            for rule, prob in rule2prob.items():
+                check_result = self._check_exceptions(val, exceptions)
+                if rule.validate(val):
+                    if check_result == False:
+                        rules.append(rule)
+                        probs.append(prob)
+                    else:
+                        exception_hits.append(check_result)
+            if probs:
+                rule = random.choices(rules, weights=probs, k=1)[0]
+                transformed_value = rule.transform(val[:])
+                examples.append(transformed_value)
+            else:
+                wait_time += 1
+            if wait_time == 10 * len(values):
+                exception_mode = Counter(exception_hits).most_common(1)[0][0]
+                exceptions.remove(exception_mode)
+                wait_time = 0
+        return examples, exceptions
+
+    def fit_transform(self, ec_pairs: List[Tuple[str, str]], values: List[str]):
+        rule2prob = self.trans_learner.fit(ec_pairs)
+        logger.debug("Rule Probabilities: " + str(rule2prob))
+
+        neg_values, exceptions = self._generate_transformed_data(
+            rule2prob, values, [x[1] for x in ec_pairs]
+        )
+
+        logger.debug("Values: " + str(set(values)))
+        logger.debug("Exceptions: " + str(exceptions))
+
+        pos_values = [
+            x
+            for x in list([val for val in values if val not in neg_values])
+            if not self._check_exceptions(x, exceptions)
+        ]
+
+        logger.debug(
+            f"{len(neg_values)} negative values: " + str(list(set(neg_values))[:20])
+        )
+        logger.debug(
+            f"{len(pos_values)} positive values: " + str(list(set(pos_values))[:20])
+        )
+
+        data, labels = (
+            neg_values + pos_values,
+            [0 for _ in range(len(neg_values))] + [1 for _ in range(len(pos_values))],
+        )
+
+        return data, labels

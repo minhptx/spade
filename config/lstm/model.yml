@@ -1,0 +1,7 @@
+batch_size: 50
+reg_emb_dim: 10
+char_emb_dim: 30
+hid_dim: 50
+num_layers: 2
+dropout: 0.2
+lr: 0.005

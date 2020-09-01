@@ -1,8 +1,7 @@
-import itertools
 import json
 from collections import defaultdict
 
-from elasticsearch import AsyncElasticsearch, Elasticsearch
+from elasticsearch import Elasticsearch
 
 from kbclean.utils.data.helpers import str2regex
 
@@ -27,6 +26,8 @@ class ESQuery:
         return ESQuery.instance
 
     def get_char_ngram_counts(self, ngrams):
+        if not ngrams:
+            return [100000]
         query = "{}\n" + "\n{}\n".join(
             [
                 json.dumps({"query": {"term": {"data": {"value": ngram}}}})
@@ -39,6 +40,8 @@ class ESQuery:
         ]
 
     def get_tok_ngram_counts(self, ngrams):
+        if not ngrams:
+            return [0]
         query = "{}\n" + "\n{}\n".join(
             [
                 json.dumps({"query": {"term": {"data": {"value": ngram}}}})
@@ -69,7 +72,6 @@ class ESQuery:
             ]
         )
         mresult = self.es.msearch(query, index="n_reversed_indices")
-        print(mresult["responses"][0])
 
         indices_list = [ESQuery.get_results(res, "idx") for res in mresult["responses"]]
 

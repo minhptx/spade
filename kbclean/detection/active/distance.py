@@ -1,30 +1,24 @@
-from torch import optim
-from torchtext.experimental.vectors import FastText
-from kbclean.utils.logger import MetricsTensorBoardLogger
-from pytorch_lightning import Trainer
-from kbclean.utils.data.helpers import split_train_test_dls, unzip_and_stack_tensors
-from typing import List
-from torch.utils.data.dataset import TensorDataset
-
-from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
-from kbclean.detection.active.holo import HoloActiveDetector
 import math
+from typing import List
 
-from scipy.spatial.distance import squareform, pdist
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-
-from pprint import pprint
-from kbclean.detection.base import BaseModule
-from loguru import logger
-from torchtext.vocab import build_vocab_from_iterator
-from torchtext.data import get_tokenizer
+from kbclean.detection.base import ActiveDetector, BaseModule
+from kbclean.utils.data.helpers import (split_train_test_dls,
+                                        unzip_and_stack_tensors)
+from kbclean.utils.logger import MetricsTensorBoardLogger
+from pytorch_lightning import Trainer
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics.pairwise import euclidean_distances
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.utils.data.dataset import TensorDataset
+from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
+from torchtext.data import get_tokenizer
+from torchtext.experimental.vectors import FastText
+
 
 class Encoder(nn.Module):
     def __init__(
@@ -101,7 +95,9 @@ class Distancer(nn.Module):
     def forward(self, inputs1, lengths1, inputs2, lengths2):
         encoded1, _ = self.encode(inputs1, lengths1)
         encoded2, _ = self.encode(inputs2, lengths2)
-        return torch.exp(-torch.abs(torch.cdist(encoded1.unsqueeze(1), encoded2.unsqueeze(1), 1))).squeeze()
+        return torch.exp(
+            -torch.abs(torch.cdist(encoded1.unsqueeze(1), encoded2.unsqueeze(1), 1))
+        ).squeeze()
 
 
 class DistanceMaximizer(BaseModule):
@@ -131,7 +127,7 @@ class DistanceMaximizer(BaseModule):
         probs = self.forward(inputs1, lengths1, inputs2, lengths2)
         loss = F.binary_cross_entropy(probs, labels.float())
 
-        preds = (probs >= 0.5)
+        preds = probs >= 0.5
         acc = (preds == labels).sum().float() / preds.shape[0]
 
         logs = {"train_loss": loss, "train_acc": acc}
@@ -149,20 +145,17 @@ class DistanceMaximizer(BaseModule):
         probs = self.forward(inputs1, lengths1, inputs2, lengths2)
 
         loss = F.binary_cross_entropy(probs, labels.float())
-        
-        preds = (probs >= 0.5)
+
+        preds = probs >= 0.5
         acc = (preds == labels).sum().float() / preds.shape[0]
 
-        return {
-            "val_loss": loss,
-            "val_acc": acc
-        }
+        return {"val_loss": loss, "val_acc": acc}
 
     def configure_optimizers(self):
         return [optim.AdamW(self.parameters(), lr=self.hparams.lr)], []
 
 
-class DistanceActiveDetector(HoloActiveDetector):
+class DistanceDetector(ActiveDetector):
     def __init__(self, hparams):
         self.hparams = hparams
 
@@ -193,7 +186,13 @@ class DistanceActiveDetector(HoloActiveDetector):
             ]
         )
 
-        return error_seqs, error_lengths, cleaned_seqs, cleaned_lengths, torch.tensor(labels)
+        return (
+            error_seqs,
+            error_lengths,
+            cleaned_seqs,
+            cleaned_lengths,
+            torch.tensor(labels),
+        )
 
     def idetect_values(
         self, ec_str_pairs: List, values: List[str], test_values: List[str]
@@ -202,7 +201,8 @@ class DistanceActiveDetector(HoloActiveDetector):
         str_pairs = [
             (str_pair[0], clean_str, 0)
             for clean_str in values
-            for str_pair in ec_str_pairs if str_pair[0] != clean_str
+            for str_pair in ec_str_pairs
+            if str_pair[0] != clean_str
         ] + [(str1, str2, 1) for str1 in values for str2 in values]
         train_tensors = self.generate_training_data(str_pairs)
 
@@ -237,11 +237,12 @@ class DistanceActiveDetector(HoloActiveDetector):
 
         encoded_test_data = self.model.encode(*test_tensors)
 
-        dist_df = pd.DataFrame(euclidean_distances(encoded_test_data, encoded_test_data), columns=test_values, index=test_values)
-
-        print(dist_df)
+        dist_df = pd.DataFrame(
+            euclidean_distances(encoded_test_data, encoded_test_data),
+            columns=test_values,
+            index=test_values,
+        )
 
         isolation_forest = IsolationForest()
         outliers = isolation_forest.fit_predict(encoded_test_data)
         return outliers != -1
-

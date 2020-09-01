@@ -1,2 +1,4 @@
-from .holo import HoloDetector, HoloExtractor, HoloActiveDetector
-from .distance import DistanceActiveDetector
+from .base import BaseActiveLearner
+from .distance import DistanceDetector
+from .holo import HoloDetector
+from .lstm import LSTMDetector

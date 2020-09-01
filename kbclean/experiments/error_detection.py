@@ -1,21 +1,45 @@
-import click
-import pandas as pd
-from loguru import logger
+import random
 
+import click
+from loguru import logger
 import sys
-from kbclean.detection import DistanceActiveDetector, AdhocDetector, HoloActiveDetector
+from kbclean.detection import (AdhocDetector, DistanceDetector,
+                               HoloDetector, LSTMDetector)
+from kbclean.detection.active.holo import HoloActiveLearner
 from kbclean.evaluation import Evaluator
 from kbclean.utils.inout import load_config
 
 config = {
     "handlers": [
-        {"sink": sys.stdout, "format": "{time} - {message}"},
-        {"sink": "error.log", "serialize": True, "level": "ERROR"},
-        {"sink": "info.log", "serialize": True, "level": "INFO"},
+        {"sink": sys.stdout, "format": "{time} - {message}", "level": "WARNING"},
+        {
+            "sink": "error.log",
+            "format": "{time} - {message}",
+            "level": "ERROR",
+            "backtrace": True,
+            "diagnose": True,
+        },
+        {"sink": "info.log", "format": "{time} - {message}", "level": "INFO",},
+        {"sink": "debug.log", "format": "{time} - {message}", "level": "DEBUG",},
     ]
 }
 
+
+name2model = {
+    "adhoc": AdhocDetector,
+    "distance": DistanceDetector,
+    "holo": HoloDetector,
+    "lstm": LSTMDetector
+}
+
 logger.configure(**config)
+
+logger.info(
+    "=========================================================================="
+)
+
+random.seed(1811)
+
 
 @click.group()
 def cli():
@@ -27,43 +51,37 @@ def cli():
 @click.option(
     "--config_path", "-c", help="Path to configuration file", default="config"
 )
-@click.option(
-    "--output_path", "-o", help="Path to output directory", default="output"
-)
+@click.option("--output_path", "-o", help="Path to output directory", default="output")
 @click.option(
     "--method", "-m", help="Method for outlier detection", default="deep_clean"
 )
-@click.option("--interactive", "-i", help="Interactive detection", default=True)
+@click.option("--interactive", "-i", is_flag=True, help="Interactive detection")
 def evaluate(data_path, config_path, output_path, method, interactive):
     evaluator = Evaluator()
 
     hparams = load_config(config_path)
 
-    if method == "adhoc_clean":
-        detector = AdhocDetector(hparams.adhoc)
-    elif method == "distance_clean":
-        detector = DistanceActiveDetector(hparams.distance)
-    else:
-        detector = HoloActiveDetector(hparams.holo)
+    detector = name2model[method](getattr(hparams, method))
+    getattr(hparams, method).num_gpus = 1 
+
     if interactive:
-        evaluator.fake_ievaluate(detector, data_path, output_path)
+        evaluator.ievaluate(detector, data_path, output_path)
     else:
         evaluator.evaluate(detector, data_path, output_path)
 
 
 @cli.command()
-@click.option("--config_path", help="Path to configuration file", default="config")
-@click.option("--save_path", help="Path to save location", default="config")
-@click.option("--method", help="Method for outlier detection", default="deep_clean")
-def train(config_path, save_path, method):
+@click.option("--data_path", "-d", help="Path to dataset")
+@click.option(
+    "--config_path", "-c", help="Path to configuration file", default="config"
+)
+def evaluate_active(data_path, config_path):
+    evaluator = Evaluator()
     hparams = load_config(config_path)
 
-    if method == "adhoc_clean":
-        detector = AdhocDetector(hparams.adhoc)
-    else:
-        detector = ActiveDetector(hparams.bert)
+    active_learner = HoloActiveLearner(hparams.holo)
 
-    detector.prepare()
+    print(evaluator.evaluate_active(active_learner, data_path, 3))
 
 
 if __name__ == "__main__":

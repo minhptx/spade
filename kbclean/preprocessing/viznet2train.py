@@ -3,7 +3,6 @@ from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import explode, udf
 from pyspark.sql.types import ArrayType, StringType
-import regex as re
 
 
 def eval_with_catch(x):

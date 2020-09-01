@@ -1,9 +1,8 @@
 import torch
 import torch.nn.functional as F
-from torch import batch_norm, nn
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence
 
-from kbclean.detection import BaseDetector
 from kbclean.detection.base import BaseModule
 
 

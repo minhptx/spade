@@ -1,13 +1,28 @@
 import itertools
-from logging import exception
-import random
-from pprint import pprint
+from functools import partial
 from typing import Counter, List
 
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from kbclean.detection.base import ActiveDetector, BaseModule
+from kbclean.detection.extras.highway import Highway
+from kbclean.transformation.noisy_channel import NCGenerator
+from kbclean.utils.data.helpers import (
+    split_train_test_dls,
+    str2regex,
+    unzip_and_stack_tensors,
+)
+from kbclean.utils.search.query import ESQuery
+from kbclean.utils.features.attribute import (
+    sym_trigrams,
+    sym_value_freq,
+    val_trigrams,
+    value_freq,
+    xngrams,
+)
+from kbclean.utils.logger import MetricsTensorBoardLogger
 from loguru import logger
 from pytorch_lightning import Trainer
 from sklearn.preprocessing import MinMaxScaler
@@ -17,41 +32,45 @@ from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
 from torchtext.data.utils import get_tokenizer
 from torchtext.experimental.vectors import FastText
 
-from kbclean.detection.base import BaseDetector, BaseModule
-from kbclean.detection.extras.highway import Highway
-from kbclean.transformation.noisy_channel import NoisyChannel, TransformationRule
-from kbclean.utils.data.helpers import split_train_test_dls, unzip_and_stack_tensors
-from kbclean.utils.features.holodetect import (
-    sym_trigrams,
-    sym_value_freq,
-    val_trigrams,
-    value_freq,
-)
-from kbclean.utils.logger import MetricsTensorBoardLogger
 
+class HoloFeatureExtractor:
+    def fit(self, values):
+        logger.debug("Values: " + str(values[:10]))
+        trigram = [["".join(x) for x in list(xngrams(val, 3))] for val in values]
+        ngrams = list(itertools.chain.from_iterable(trigram))
+        self.trigram_counter = Counter(ngrams)
+        sym_ngrams = [str2regex(x, False) for x in ngrams]
 
-class HoloExtractor:
-    def __init__(self, feature_funcs=None):
-        if feature_funcs is None:
-            self.feature_funcs = [
-                val_trigrams,
-                sym_trigrams,
-                value_freq,
-                sym_value_freq,
-            ]
-        else:
-            self.feature_funcs = feature_funcs
+        self.sym_trigram_counter = Counter(sym_ngrams)
+        self.val_counter = Counter(values)
 
-    def extract_features(self, values):
+        sym_values = [str2regex(x, False) for x in values]
+        self.sym_val_counter = Counter(sym_values)
+
+        self.func2counter = {
+            val_trigrams: self.trigram_counter,
+            sym_trigrams: self.sym_trigram_counter,
+            value_freq: self.val_counter,
+            sym_value_freq: self.sym_val_counter,
+        }
+
+    def transform(self, values):
         feature_lists = []
-        for func in self.feature_funcs:
-            feature_lists.append(func(values))
+        for func, counter in self.func2counter.items():
+            f = partial(func, counter=counter)
+            logger.debug(
+                "Negative: %s %s" % (func, list(zip(values[:10], f(values[:10]))))
+            )
+            logger.debug(
+                "Positive: %s %s" % (func, list(zip(values[-10:], f(values[-10:]))))
+            )
+            feature_lists.append(f(values))
 
         feature_vecs = list(zip(*feature_lists))
-        return np.asmatrix(feature_vecs)
+        return np.asarray(feature_vecs)
 
 
-class LearnableModule(nn.Module):
+class HoloLearnableModule(nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
@@ -67,21 +86,91 @@ class LearnableModule(nn.Module):
         return self.linear(hw_out)
 
 
-class HoloDetector(BaseModule):
+class HoloActiveLearner:
+    def __init__(self, hparams):
+        self.es_query = ESQuery.get_instance(hparams.es_host, hparams.es_port)
+
+    def fit(self, df):
+        self.df = df
+
+    def min_ngram_counts(self, values):
+        return [
+            min(
+                self.es_query.get_char_ngram_counts(
+                    ["".join(x) for x in xngrams(list(value), 3, False)]
+                )
+            )
+            for value in values
+        ]
+
+    def min_tok_ngram_counts(self, values):
+        return [
+            min(
+                self.es_query.get_char_ngram_counts(
+                    ["".join(x) for x in xngrams(list(value), 3, False)]
+                )
+            )
+            for value in values
+        ]
+
+    def min_coexist(self, values):
+        coexist_count = self.es_query.get_coexist_counts(values)
+        return pd.DataFrame(coexist_count).to_numpy()
+
+    def next_column(self):
+        return 0
+
+    @staticmethod
+    def sum_distance_to_mean(values):
+        val_array = np.array(values)
+        return np.mean(np.abs(val_array - np.mean(val_array)))
+
+    def choose_best_feature(self, col):
+        best_sum_distance = -1
+        best_func = None
+        for func in [self.col_min_ngrams, self.col_min_sym_ngrams]:
+            counts = func(col)
+            func_sum_distance = HoloActiveLearner.sum_distance_to_mean(counts)
+            if func_sum_distance > best_sum_distance:
+                best_sum_distance = func_sum_distance
+                best_func = func
+        return best_func
+
+    def col_min_ngrams(self, column):
+        values = self.df.iloc[:, column].values.tolist()
+        min_ngram_counts = self.min_ngram_counts(values)
+        return min_ngram_counts
+
+    def col_min_sym_ngrams(self, column):
+        values = self.df.iloc[:, column].values.tolist()
+        sym_values = [str2regex(x, False) for x in values]
+        min_ngram_counts = self.min_ngram_counts(sym_values)
+        return min_ngram_counts
+
+    def next(self, k=3):
+        column = self.next_column()
+        best_func = self.choose_best_feature(column)
+        values = self.df.iloc[:, column].values.tolist()
+        counts = best_func(column)
+        k_indices = np.argpartition(counts, k)[:k]
+        return [(column, index) for index in k_indices]
+
+
+class HoloModel(BaseModule):
     def __init__(self, hparams):
         super().__init__()
 
         self.hparams = hparams
 
-        self.char_model = LearnableModule(hparams)
-        self.word_model = LearnableModule(hparams)
+        self.char_model = HoloLearnableModule(hparams)
+        self.word_model = HoloLearnableModule(hparams)
 
         self.fcs = nn.Sequential(
             nn.Linear(hparams.input_dim, hparams.input_dim),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.BatchNorm1d(hparams.input_dim),
+            nn.Dropout(hparams.dropout),
             nn.Linear(hparams.input_dim, 1),
-            nn.Sigmoid(),
         )
 
     def forward(self, word_inputs, char_inputs, other_inputs):
@@ -90,7 +179,7 @@ class HoloDetector(BaseModule):
 
         concat_inputs = torch.cat([word_out, char_out, other_inputs], dim=1).float()
 
-        return self.fcs(concat_inputs)
+        return torch.sigmoid(self.fcs(concat_inputs.float()))
 
     def training_step(self, batch, batch_idx):
         word_inputs, char_inputs, other_inputs, labels = batch
@@ -115,27 +204,22 @@ class HoloDetector(BaseModule):
         return [optim.AdamW(self.parameters(), lr=self.hparams.lr)], []
 
 
-class HoloActiveDetector(BaseDetector):
+class HoloDetector(ActiveDetector):
     def __init__(self, hparams):
         self.hparams = hparams
-
-        self.model = HoloDetector(hparams.detector)
-        self.trans_learner = NoisyChannel()
-        self.feature_extractor = HoloExtractor()
+        self.feature_extractor = HoloFeatureExtractor()
 
         self.tokenizer = get_tokenizer("spacy")
         self.fasttext = FastText()
         self.scaler = MinMaxScaler()
-
-        random.seed(1811)
-
-    def prepare(self, save_path):
-        pass
+        self.generator = NCGenerator()
 
     def extract_features(self, data, labels=None):
-        features = self.scaler.fit_transform(
-            self.feature_extractor.extract_features(data)
-        )
+        if labels:
+            features = self.scaler.fit_transform(self.feature_extractor.transform(data))
+        else:
+            features = self.scaler.transform(self.feature_extractor.transform(data))
+
         features = torch.tensor(features)
 
         word_data = stack_and_pad_tensors(
@@ -162,83 +246,28 @@ class HoloActiveDetector(BaseDetector):
             return word_data, char_data, features, label_data
         return word_data, char_data, features
 
-    def check_exceptions(self, str1, exceptions):
-        for exception in exceptions:
-            if exception in str1:
-                return False
-        return True
-
-    def generate_transformed_data(
-        self, rule2prob, values: List[str], exception_strs: List[str]
-    ):
-        examples = []
-        wait_time = 0
-
-        exceptions = [x.after_str for x in rule2prob.keys()]
-
-        while len(examples) < len(values) and wait_time < len(values):
-            val = random.choice(values)
-
-            probs = []
-            rules = []
-
-            for rule, prob in rule2prob.items():
-                if rule.validate(val) and self.check_exceptions(val, exceptions):
-                    rules.append(rule)
-                    probs.append(prob)
-            if probs:
-                rule = random.choices(rules, weights=probs, k=1)[0]
-                transformed_value = rule.transform(val[:])
-                if val not in exception_strs:
-                    examples.append(transformed_value)
-                else:
-                    wait_time += 1
-            else:
-                wait_time += 1
-            if wait_time == len(values) - 1:
-                if exceptions:
-                    exceptions.remove(min(exceptions, key=lambda x: len(x)))
-                    wait_time = 0
-        return examples, exceptions
-
     def idetect_values(
-        self, ec_str_pairs: str, values: List[str], test_values: List[str]
+        self, ec_str_pairs: str, values: List[str]
     ):
-        rule2prob = self.trans_learner.transformation_distribution(ec_str_pairs)
-        logger.info("Rule Probabilities: " + str(rule2prob))
+        self.feature_extractor.fit(values)
 
-        neg_values, exceptions = self.generate_transformed_data(
-            rule2prob, values, [x[1] for x in ec_str_pairs]
-        )
-        logger.info("Values: " + str(values[:10]))
-        logger.info("Exceptions: " + str(exceptions))
+        data, labels = self.generator.fit_transform(ec_str_pairs, values)
 
-        pos_values = [
-            x
-            for x in list([val for val in values if val not in neg_values])
-            if self.check_exceptions(x, exceptions)
-        ]
+        feature_tensors_with_labels = self.extract_features(data, labels)
 
-        logger.info("Negative values: " + str(neg_values[:10]))
-        logger.info("Positive values: " + str(pos_values[:10]))
-
-        data, labels = (
-            neg_values + pos_values,
-            [0 for _ in range(len(neg_values))] + [1 for _ in range(len(pos_values))],
-        )
-
-        word_data, char_data, features, label_data = self.extract_features(data, labels)
-
-        dataset = TensorDataset(word_data, char_data, features, label_data)
+        dataset = TensorDataset(*feature_tensors_with_labels)
 
         train_dataloader, val_dataloader, _ = split_train_test_dls(
-            dataset, unzip_and_stack_tensors, self.hparams.detector.batch_size,
+            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size,
         )
+        self.model = HoloModel(self.hparams.model)
+
+        self.model.train()
 
         trainer = Trainer(
             gpus=4,
             distributed_backend="dp",
-            logger=MetricsTensorBoardLogger("tt_logs", "active"),
+            # logger=MetricsTensorBoardLogger("tt_logs", name="active"),
             max_epochs=20,
         )
         trainer.fit(
@@ -247,40 +276,40 @@ class HoloActiveDetector(BaseDetector):
             val_dataloaders=[val_dataloader],
         )
 
-        trainer.save_checkpoint(f"{self.hparams.save_path}/model.ckpt")
+        trainer.save_checkpoint(f"{self.hparams.save_path}/model.ckpt") 
 
-        word_data, char_data, features = self.extract_features(test_values)
+        feature_tensors = self.extract_features(values)
 
-        pred = self.model.forward(word_data, char_data, features)
+        self.model.eval()
+        pred = self.model.forward(*feature_tensors)
 
-        return (pred >= 0.5).squeeze(1).detach().cpu().numpy()
+        return pred.squeeze(1).detach().cpu().numpy()
 
-    def detect_values(self, values: List[str]):
-        pass
-
-    def detect(self, df: pd.DataFrame):
-        result_df = df.copy()
-        for column in df.columns:
-            values = df[column].values.tolist()
-            outliers = self.detect_values(values)
-            result_df[column] = pd.Series(outliers)
-        return result_df
-
-    def fake_idetect(self, raw_df: pd.DataFrame, cleaned_df: pd.DataFrame):
+    def eval_idetect(self, raw_df: pd.DataFrame, cleaned_df: pd.DataFrame):
         result_df = raw_df.copy()
         for column in raw_df.columns:
             values = raw_df[column].values.tolist()
             cleaned_values = cleaned_df[column].values.tolist()
-            true_values = []
             false_values = []
+
             for val, cleaned_val in zip(values, cleaned_values):
                 if val != cleaned_val:
                     false_values.append((val, cleaned_val))
-                else:
-                    true_values.append(val)
+
             if not false_values:
                 result_df[column] = pd.Series([True for _ in range(len(raw_df))])
             else:
-                outliers = self.idetect_values(false_values[:10], values, values)
+                outliers = self.idetect_values(false_values[:2], values)
+                result_df[column] = pd.Series(outliers)
+        return result_df
+
+    def idetect(self, df: pd.DataFrame, col2examples: dict):
+        result_df = df.copy()
+        for column in df.columns:
+            values = df[column].values.tolist()
+            if column not in col2examples or not col2examples[column]:
+                result_df[column] = pd.Series([1.0 for _ in range(len(df))])
+            else:
+                outliers = self.idetect_values([(x["raw"], x["cleaned"]) for x in col2examples[column]], values)
                 result_df[column] = pd.Series(outliers)
         return result_df
