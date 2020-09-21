@@ -6,7 +6,7 @@ from numpy.core.multiarray import result_type
 import pandas as pd
 import rapidjson as json
 
-from kbclean.detection.active.lstm import LSTMDetector
+from kbclean.detection.active_transform.lstm import LSTMDetector
 from kbclean.utils.inout import load_config
 from loguru import logger
 import sys

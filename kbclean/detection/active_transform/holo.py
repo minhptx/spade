@@ -14,7 +14,6 @@ from kbclean.utils.data.helpers import (
     str2regex,
     unzip_and_stack_tensors,
 )
-from kbclean.utils.search.query import ESQuery
 from kbclean.utils.features.attribute import (
     sym_trigrams,
     sym_value_freq,
@@ -86,76 +85,6 @@ class HoloLearnableModule(nn.Module):
         return self.linear(hw_out)
 
 
-class HoloActiveLearner:
-    def __init__(self, hparams):
-        self.es_query = ESQuery.get_instance(hparams.es_host, hparams.es_port)
-
-    def fit(self, df):
-        self.df = df
-
-    def min_ngram_counts(self, values):
-        return [
-            min(
-                self.es_query.get_char_ngram_counts(
-                    ["".join(x) for x in xngrams(list(value), 3, False)]
-                )
-            )
-            for value in values
-        ]
-
-    def min_tok_ngram_counts(self, values):
-        return [
-            min(
-                self.es_query.get_char_ngram_counts(
-                    ["".join(x) for x in xngrams(list(value), 3, False)]
-                )
-            )
-            for value in values
-        ]
-
-    def min_coexist(self, values):
-        coexist_count = self.es_query.get_coexist_counts(values)
-        return pd.DataFrame(coexist_count).to_numpy()
-
-    def next_column(self):
-        return 0
-
-    @staticmethod
-    def sum_distance_to_mean(values):
-        val_array = np.array(values)
-        return np.mean(np.abs(val_array - np.mean(val_array)))
-
-    def choose_best_feature(self, col):
-        best_sum_distance = -1
-        best_func = None
-        for func in [self.col_min_ngrams, self.col_min_sym_ngrams]:
-            counts = func(col)
-            func_sum_distance = HoloActiveLearner.sum_distance_to_mean(counts)
-            if func_sum_distance > best_sum_distance:
-                best_sum_distance = func_sum_distance
-                best_func = func
-        return best_func
-
-    def col_min_ngrams(self, column):
-        values = self.df.iloc[:, column].values.tolist()
-        min_ngram_counts = self.min_ngram_counts(values)
-        return min_ngram_counts
-
-    def col_min_sym_ngrams(self, column):
-        values = self.df.iloc[:, column].values.tolist()
-        sym_values = [str2regex(x, False) for x in values]
-        min_ngram_counts = self.min_ngram_counts(sym_values)
-        return min_ngram_counts
-
-    def next(self, k=3):
-        column = self.next_column()
-        best_func = self.choose_best_feature(column)
-        values = self.df.iloc[:, column].values.tolist()
-        counts = best_func(column)
-        k_indices = np.argpartition(counts, k)[:k]
-        return [(column, index) for index in k_indices]
-
-
 class HoloModel(BaseModule):
     def __init__(self, hparams):
         super().__init__()
@@ -178,7 +107,6 @@ class HoloModel(BaseModule):
         char_out = self.char_model(char_inputs)
 
         concat_inputs = torch.cat([word_out, char_out, other_inputs], dim=1).float()
-
         return torch.sigmoid(self.fcs(concat_inputs.float()))
 
     def training_step(self, batch, batch_idx):
@@ -257,26 +185,27 @@ class HoloDetector(ActiveDetector):
 
         dataset = TensorDataset(*feature_tensors_with_labels)
 
+
         train_dataloader, val_dataloader, _ = split_train_test_dls(
-            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size,
+            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size, num_workers=1
         )
-        self.model = HoloModel(self.hparams.model)
+        if len(train_dataloader) > 0:
+            self.model = HoloModel(self.hparams.model)
 
-        self.model.train()
+            self.model.train()
 
-        trainer = Trainer(
-            gpus=4,
-            distributed_backend="dp",
-            # logger=MetricsTensorBoardLogger("tt_logs", name="active"),
-            max_epochs=20,
-        )
-        trainer.fit(
-            self.model,
-            train_dataloader=train_dataloader,
-            val_dataloaders=[val_dataloader],
-        )
+            trainer = Trainer(
+                gpus=4,
+                distributed_backend="dp",
+                # logger=MetricsTensorBoardLogger("tt_logs", name="active"),
+                max_epochs=20,
+            )
+            trainer.fit(
+                self.model,
+                train_dataloader=train_dataloader,
+                val_dataloaders=[val_dataloader],
+            )
 
-        trainer.save_checkpoint(f"{self.hparams.save_path}/model.ckpt") 
 
         feature_tensors = self.extract_features(values)
 
@@ -285,7 +214,7 @@ class HoloDetector(ActiveDetector):
 
         return pred.squeeze(1).detach().cpu().numpy()
 
-    def eval_idetect(self, raw_df: pd.DataFrame, cleaned_df: pd.DataFrame):
+    def eval_idetect(self, raw_df: pd.DataFrame, cleaned_df: pd.DataFrame, k):
         result_df = raw_df.copy()
         for column in raw_df.columns:
             values = raw_df[column].values.tolist()
@@ -299,7 +228,7 @@ class HoloDetector(ActiveDetector):
             if not false_values:
                 result_df[column] = pd.Series([True for _ in range(len(raw_df))])
             else:
-                outliers = self.idetect_values(false_values[:2], values)
+                outliers = self.idetect_values(false_values[:k], values)
                 result_df[column] = pd.Series(outliers)
         return result_df
 

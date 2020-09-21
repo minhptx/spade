@@ -1,41 +1,86 @@
 import csv
+from pathlib import Path
 
-from sklearn.metrics import classification_report
-
+import pandas as pd
+from torch.nn.functional import threshold
+from kbclean.utils.data.helpers import diff_dfs, not_equal
+from sklearn.metrics import classification_report, confusion_matrix
+import numpy as np
 
 class Report:
-    def __init__(self, debug_path):
-        self.debug_path = debug_path
-        self.groundtruth = []
-        self.predictions = []     
+    def __init__(self, prob_df, raw_df, cleaned_df, groundtruth_df, threshold=0.5):
+        self.threshold = 0.4
+        detected_df = prob_df.applymap(lambda x: x >= self.threshold)
 
-    def clear(self):
-        self.groundtruth.clear()
-        self.predictions.clear()   
+        flat_result = detected_df.stack().values.tolist()
+        ground_truth = groundtruth_df.stack().values.tolist()
 
-    def __call__(self, raw_strings, cleaned_strings, predictions):
-        assert len(raw_strings) == len(
-            predictions
-        ), "Input and target data should have the same size"
+        self.report = pd.DataFrame(
+            classification_report(ground_truth, flat_result, output_dict=True)
+        ).transpose()
 
-        groundtruth = []
+        self.matrix = pd.DataFrame(
+            confusion_matrix(ground_truth, flat_result, labels=[True, False]),
+            columns=["True", "False"],
+        )
 
-        for idx, r_string in enumerate(raw_strings):
-            if r_string != cleaned_strings[idx]:
-                groundtruth.append(True)
-            else:
-                groundtruth.append(False)
+        self.failures, self.scores = self.debug(
+            raw_df, cleaned_df, groundtruth_df, detected_df, prob_df
+        )
 
-        self.groundtruth.extend(groundtruth)
-        self.predictions.extend(predictions)
+    def debug(self, raw_df, cleaned_df, groundtruth_df, result_df, prob_df):
+        def get_prob(x):
+            return prob_df.loc[x["id"], x["col"]]
 
-        with open(self.debug_file, "a") as f:
-            writer = csv.writer(f)
-            for raw_string, cleaned_string, gt, prediction in zip(
-                raw_strings, cleaned_strings, groundtruth, predictions
-            ):
-                if gt != prediction:
-                    writer.writerow([cleaned_string, raw_string, gt, prediction])
+        fn_df = diff_dfs(raw_df, cleaned_df)
+        fn_df["prediction"] = fn_df.apply(get_prob, axis=1)
+        fn_df = fn_df[fn_df["prediction"] >= self.threshold]
 
-    def publish(self):
-        return classification_report(self.groundtruth, self.predictions)
+        diff_mask = not_equal(groundtruth_df, result_df)
+        ne_stacked = diff_mask.stack()
+        changed = ne_stacked[ne_stacked]
+
+        changed.index.names = ["id", "col"]
+        difference_locations = np.where(diff_mask)
+        changed_from = raw_df.values[difference_locations]
+        changed_to = cleaned_df.values[difference_locations]
+        fp_df = pd.DataFrame(
+            {"from": changed_from, "to": changed_to}, index=changed.index
+        )
+        fp_df["prediction"] = 0.0
+        fp_df["id"] = fp_df.index.get_level_values("id")
+        fp_df["col"] = fp_df.index.get_level_values("col")
+        fp_df["prediction"] = fp_df.apply(get_prob, axis=1)
+        fp_df = fp_df[fp_df["prediction"] <= self.threshold]
+
+        concat_df = pd.concat([fp_df, fn_df], ignore_index=True)
+
+        score_df = pd.DataFrame()
+        score_sr = raw_df.stack()
+        score_df["from"] = score_sr.values.tolist()
+        score_df["to"] = cleaned_df.stack().values.tolist()
+        score_df.index = score_sr.index
+        score_df.index.names = ["id", "col"]
+
+        score_df["id"] = score_df.index.get_level_values("id")
+        score_df["col"] = score_df.index.get_level_values("col")
+        score_df["score"] = prob_df.stack().values.tolist()
+        return concat_df, score_df
+
+    def serialize(self, output_path):
+        report_path = Path(output_path) / "report.csv"
+        debug_path = Path(output_path) / "debug.csv"
+        matrix_path = Path(output_path) / "matrix.csv"
+        score_path = Path(output_path) / "scores.csv"
+
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        self.report["index"] = self.report.index
+        self.report.to_csv(report_path, index=False, quoting=csv.QUOTE_ALL)
+
+        self.failures.to_csv(debug_path, index=False, quoting=csv.QUOTE_ALL)
+
+        self.matrix["index"] = pd.Series(["True", "False"])
+        self.matrix.to_csv(matrix_path, index=None, quoting=csv.QUOTE_ALL)
+
+        self.scores.to_csv(score_path, index=None, quoting=csv.QUOTE_ALL)

@@ -1,4 +1,4 @@
-batch_size: 50
+batch_size: 60
 input_dim: 6
 emb_dim: 300
 num_layers: 2

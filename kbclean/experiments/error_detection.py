@@ -1,13 +1,18 @@
+import os
+from torch.nn.modules.rnn import LSTM
+from kbclean.detection.active_transform.lstm import LSTMNaiveDetector
 import random
+import shutil
+import sys
 
 import click
-from loguru import logger
-import sys
-from kbclean.detection import (AdhocDetector, DistanceDetector,
-                               HoloDetector, LSTMDetector)
-from kbclean.detection.active.holo import HoloActiveLearner
+from kbclean.detection import AdhocDetector
+from kbclean.detection.active_transform import DistanceDetector, HoloDetector
+from kbclean.detection.active_transform import LSTMDetector
 from kbclean.evaluation import Evaluator
+from kbclean.recommendation.active import Uncommoner
 from kbclean.utils.inout import load_config
+from loguru import logger
 
 config = {
     "handlers": [
@@ -29,7 +34,7 @@ name2model = {
     "adhoc": AdhocDetector,
     "distance": DistanceDetector,
     "holo": HoloDetector,
-    "lstm": LSTMDetector
+    "lstm": LSTMDetector,
 }
 
 logger.configure(**config)
@@ -56,33 +61,28 @@ def cli():
     "--method", "-m", help="Method for outlier detection", default="deep_clean"
 )
 @click.option("--interactive", "-i", is_flag=True, help="Interactive detection")
-def evaluate(data_path, config_path, output_path, method, interactive):
+@click.option("--num_gpus", help="Number of GPUs used", default=1)
+@click.option("-k", help="Number of labeled examples", default=2)
+def evaluate(data_path, config_path, output_path, method, interactive, num_gpus, k):
     evaluator = Evaluator()
 
     hparams = load_config(config_path)
 
     detector = name2model[method](getattr(hparams, method))
-    getattr(hparams, method).num_gpus = 1 
+    getattr(hparams, method).num_gpus = 1
 
     if interactive:
-        evaluator.ievaluate(detector, data_path, output_path)
+        evaluator.ievaluate(detector, data_path, output_path, k)
     else:
         evaluator.evaluate(detector, data_path, output_path)
 
 
 @cli.command()
-@click.option("--data_path", "-d", help="Path to dataset")
-@click.option(
-    "--config_path", "-c", help="Path to configuration file", default="config"
-)
-def evaluate_active(data_path, config_path):
-    evaluator = Evaluator()
-    hparams = load_config(config_path)
-
-    active_learner = HoloActiveLearner(hparams.holo)
-
-    print(evaluator.evaluate_active(active_learner, data_path, 3))
-
+def clear():
+    shutil.rmtree("output", ignore_errors=True)
+    os.remove("info.log")
+    os.remove("error.log")
+    os.remove("debug.log")
 
 if __name__ == "__main__":
     cli()
