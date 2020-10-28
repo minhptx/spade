@@ -14,7 +14,7 @@
 
 labeling_project/
 embeddings/
-results/
+result/
 tt_logs/
 data/
 debug/

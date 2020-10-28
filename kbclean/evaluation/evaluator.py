@@ -1,12 +1,15 @@
-from collections import defaultdict
 import csv
-from kbclean.utils.data.helpers import diff_dfs
-from kbclean.recommendation.active import Uncommoner
+import time
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
+import ftfy
 import numpy as np
 import pandas as pd
 from kbclean.evaluation.report import Report
+from kbclean.recommendation.active import ActiveLearner
+from kbclean.utils.data.helpers import diff_dfs
 from loguru import logger
 from sklearn.metrics import classification_report, confusion_matrix
 
@@ -15,7 +18,7 @@ class Evaluator:
     def __init__(self):
         pass
 
-    def read_dataset(self, data_path):
+    def read_dataset(self, data_path, data_range):
         data_path = Path(data_path)
 
         raw_path = data_path / "raw"
@@ -25,27 +28,41 @@ class Evaluator:
         name2cleaned = {}
         name2groundtruth = {}
 
-        for file_path in list(raw_path.iterdir()):
+        if data_range[0] == None:
+            data_range[0] = 0
+        if data_range[1] == None:
+            data_range[1] = len(list(raw_path.iterdir()))
+
+        for file_path in sorted(list(raw_path.iterdir()))[
+            data_range[0] : data_range[1]
+        ]:
             name = file_path.name
             name2raw[name] = pd.read_csv(
                 raw_path / name, keep_default_na=False, dtype=str
-            ).applymap(lambda x: x[:100])
+            ).applymap(lambda x: ftfy.fix_text(x[:100]))
             name2cleaned[name] = pd.read_csv(
                 cleaned_path / name, keep_default_na=False, dtype=str
-            ).applymap(lambda x: x[:100])
+            ).applymap(lambda x: ftfy.fix_text(x[:100]))
 
             name2groundtruth[name] = name2raw[name] == name2cleaned[name]
         return name2raw, name2cleaned, name2groundtruth
 
     def average_report(self, *reports):
-        return pd.concat(reports).groupby(level=0).mean()
+        concat_df = pd.concat(reports)
+        concat_df["precision"] = concat_df["precision"]  * concat_df["support"]
+        concat_df["recall"] = concat_df["recall"] * concat_df["support"]
+        concat_df = concat_df.groupby(level=0).sum()
+        concat_df["precision"] = concat_df["precision"] / concat_df["support"]
+        concat_df["recall"] = concat_df["recall"] / concat_df["support"]
+        concat_df["f1-score"] = concat_df.apply(lambda x: 2 * x["precision"] * x["recall"] / (x["precision"] + x["recall"]), axis=1)
+        return concat_df
 
     def evaluate_df(self, detector, raw_df, cleaned_df, groundtruth_df):
         prob_df = detector.detect(raw_df, cleaned_df)
         return Report(prob_df, raw_df, cleaned_df, groundtruth_df)
 
-    def ievaluate_df(self, detector, examples, raw_df, cleaned_df, groundtruth_df):
-        prob_df = detector.idetect(raw_df, examples)
+    def ievaluate_df(self, detector, col2examples, recommender, raw_df, cleaned_df, groundtruth_df):
+        prob_df = detector.idetect(raw_df, col2examples, recommender)
         return Report(prob_df, raw_df, cleaned_df, groundtruth_df)
 
     def fake_ievaluate_df(self, detector, raw_df, cleaned_df, groundtruth_df, k):
@@ -78,41 +95,75 @@ class Evaluator:
 
         return name2report
 
-    def ievaluate(self, detector, dataset, output_path, step=1):
+    def ievaluate(
+        self, detector, method, dataset, output_path, step=1, data_range=[0, None]
+    ):
         output_path = Path(output_path)
-        name2raw, name2cleaned, name2groundtruth = self.read_dataset(dataset)
-
+        name2raw, name2cleaned, name2groundtruth = self.read_dataset(
+            dataset, data_range
+        )
+        running_times = []
         name2ireport = defaultdict(dict)
 
         for name in name2raw.keys():
+            # if name not in ["Beers_city.csv"]:
+                # continue
+            print(f"Evaluating on {name}...")
+            if all(name2groundtruth[name].iloc[:, 0] == True):
+                continue
             logger.info(f"Evaluating on {name}...")
-            recommender = Uncommoner(name2raw[name], name2cleaned[name], detector.hparams)
+            recommender = ActiveLearner(
+                name2raw[name], name2cleaned[name], detector.hparams
+            )
             scores_df = None
+
+            start_time = time.time()
 
             for i in range(step):
                 logger.info("----------------------------------------------------")
                 logger.info(f"Running active learning step {i}...")
+
                 col2examples = recommender.update(i, scores_df)
+                running_time = time.time() - start_time
+                logger.info(
+                    f"Total recommendation (+ running time) for step {i}: {running_time}"
+                )
+
+                running_times.append(running_time)
+
+                start_time = time.time()
 
                 report = self.ievaluate_df(
-                    detector, col2examples, name2raw[name], name2cleaned[name], name2groundtruth[name]
+                    detector,
+                    col2examples,
+                    recommender,
+                    name2raw[name],
+                    name2cleaned[name],
+                    name2groundtruth[name],
                 )
 
                 logger.info("Report:\n" + str(report.report))
 
-                report.serialize(output_path / Path(dataset).name / Path(name).stem/ str(i))
+                report.serialize(
+                    output_path / method / Path(dataset).name / Path(name).stem / str(i)
+                )
+
 
                 name2ireport[i][name] = report.report
                 scores_df = report.scores
-            detector.reset()
+                detector.reset()
 
         for i in range(step):
             avg_report = self.average_report(*list(name2ireport[i].values()))
-            (Path(output_path) / Path(dataset).name / "summary").mkdir(exist_ok=True, parents=True)
-            avg_report.to_csv(Path(output_path) / Path(dataset).name / "summary" / f"{i}.csv")
+            (Path(output_path) / method / Path(dataset).name / "summary").mkdir(
+                exist_ok=True, parents=True
+            )
+            avg_report.to_csv(
+                Path(output_path) / method / Path(dataset).name / "summary" / f"{i}.csv"
+            )
             logger.info(f"Step {i} average report:\n{avg_report}")
-
-        return name2ireport[step-1]
+            logger.info(f"Mean running time: {np.mean(running_times)}")
+        return name2ireport[step - 1]
 
     def fake_ievaluate(self, detector, dataset, output_path=None):
         output_path = Path(output_path)

@@ -1,0 +1,7 @@
+batch_size: 100
+reg_emb_dim: 5
+char_hid_dim: 5
+reg_hid_dim: 5
+dropout: 0.2
+lr: 0.002
+num_epochs: 20

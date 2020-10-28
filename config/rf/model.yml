@@ -4,4 +4,3 @@ emb_dim: 300
 num_layers: 2
 dropout: 0.2
 lr: 0.005
-num_epochs: 20

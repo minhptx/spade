@@ -1,12 +1,12 @@
 batch_size: 50
 reg_emb_dim: 10
-char_emb_dim: 10
-reg_hid_dim: 5
-char_hid_dim: 5
+word_emb_dim: 300
+reg_hid_dim: 10
+word_hid_dim: 50
 num_layers: 1
 dropout: 0.3
 num_gradual: 10
 exponent: 1
-forget_rate: 0.2
+forget_rate: 0.1
 lr: 0.005
-num_epochs: 30
+num_epochs: 20

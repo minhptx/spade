@@ -21,7 +21,6 @@ from kbclean.utils.features.attribute import (
     value_freq,
     xngrams,
 )
-from kbclean.utils.logger import MetricsTensorBoardLogger
 from loguru import logger
 from pytorch_lightning import Trainer
 from sklearn.preprocessing import MinMaxScaler
@@ -106,8 +105,8 @@ class HoloModel(BaseModule):
         word_out = self.word_model(word_inputs)
         char_out = self.char_model(char_inputs)
 
-        concat_inputs = torch.cat([word_out, char_out, other_inputs], dim=1).float()
-        return torch.sigmoid(self.fcs(concat_inputs.float()))
+        concat_inputs = torch.cat([char_out], dim=1).float()
+        return torch.sigmoid(concat_inputs)
 
     def training_step(self, batch, batch_idx):
         word_inputs, char_inputs, other_inputs, labels = batch
@@ -144,7 +143,7 @@ class HoloDetector(ActiveDetector):
 
     def extract_features(self, data, labels=None):
         if labels:
-            features = self.scaler.fit_transform(self.feature_extractor.transform(data))
+            features = self.scaler.fit_transform(self.feature_extractor.fit_transform(data))
         else:
             features = self.scaler.transform(self.feature_extractor.transform(data))
 
@@ -174,12 +173,13 @@ class HoloDetector(ActiveDetector):
             return word_data, char_data, features, label_data
         return word_data, char_data, features
 
-    def idetect_values(
-        self, ec_str_pairs: str, values: List[str]
-    ):
-        self.feature_extractor.fit(values)
+    def reset(self):
+        self.model = HoloModel(self.hparams.model)
 
-        data, labels = self.generator.fit_transform(ec_str_pairs, values)
+    def idetect_values(
+        self, ec_str_pairs: str, values: List[str], recommender
+    ):
+        data, labels = self.generator.fit_transform(ec_str_pairs, values, recommender.most_positives())
 
         feature_tensors_with_labels = self.extract_features(data, labels)
 
@@ -187,7 +187,7 @@ class HoloDetector(ActiveDetector):
 
 
         train_dataloader, val_dataloader, _ = split_train_test_dls(
-            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size, num_workers=1
+            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size, ratios=[0.7, 0.1], num_workers=1
         )
         if len(train_dataloader) > 0:
             self.model = HoloModel(self.hparams.model)
@@ -197,13 +197,12 @@ class HoloDetector(ActiveDetector):
             trainer = Trainer(
                 gpus=4,
                 distributed_backend="dp",
-                # logger=MetricsTensorBoardLogger("tt_logs", name="active"),
-                max_epochs=20,
+                val_percent_check=0,
+                max_epochs=self.hparams.model.num_epochs,
             )
             trainer.fit(
                 self.model,
                 train_dataloader=train_dataloader,
-                val_dataloaders=[val_dataloader],
             )
 
 
@@ -232,13 +231,13 @@ class HoloDetector(ActiveDetector):
                 result_df[column] = pd.Series(outliers)
         return result_df
 
-    def idetect(self, df: pd.DataFrame, col2examples: dict):
+    def idetect(self, df: pd.DataFrame, col2examples: dict, recommender):
         result_df = df.copy()
         for column in df.columns:
             values = df[column].values.tolist()
             if column not in col2examples or not col2examples[column]:
                 result_df[column] = pd.Series([1.0 for _ in range(len(df))])
             else:
-                outliers = self.idetect_values([(x["raw"], x["cleaned"]) for x in col2examples[column]], values)
+                outliers = self.idetect_values([(x["raw"], x["cleaned"]) for x in col2examples[column]], values, recommender)
                 result_df[column] = pd.Series(outliers)
         return result_df

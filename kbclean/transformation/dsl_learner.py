@@ -229,10 +229,10 @@ class DSLGenerator:
         ]
 
         logger.debug(
-            f"{len(neg_values)} negative values: " + str(list(set(neg_values))[:20])
+            f"{len(neg_values)} negative values: " + str(list(set(neg_values)))
         )
         logger.debug(
-            f"{len(pos_values)} positive values: " + str(list(set(pos_values))[:20])
+            f"{len(pos_values)} positive values: " + str(list(set(pos_values)))
         )
 
         data, labels = (

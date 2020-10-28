@@ -1,22 +1,24 @@
+from kbclean.detection.active_transform.rf import RFDetector
+from kbclean.detection.active_transform.lstm import LSTM2Detector
+from kbclean.detection.active_transform.transformer import RoBertaDetector
+from kbclean.detection.active_transform.cl import ClapDetector, ClapLSTMDetector
 import os
-from torch.nn.modules.rnn import LSTM
-from kbclean.detection.active_transform.lstm import LSTMNaiveDetector
 import random
 import shutil
 import sys
 
 import click
 from kbclean.detection import AdhocDetector
-from kbclean.detection.active_transform import DistanceDetector, HoloDetector
-from kbclean.detection.active_transform import LSTMDetector
+from kbclean.detection.active_transform import (DistanceDetector, HoloDetector,
+                                                LSTMDetector,
+                                                TransoformerDetector)
 from kbclean.evaluation import Evaluator
-from kbclean.recommendation.active import Uncommoner
 from kbclean.utils.inout import load_config
 from loguru import logger
 
 config = {
     "handlers": [
-        {"sink": sys.stdout, "format": "{time} - {message}", "level": "WARNING"},
+        {"sink": sys.stdout, "format": "{time} - {message}", "level": "INFO"},
         {
             "sink": "error.log",
             "format": "{time} - {message}",
@@ -35,6 +37,11 @@ name2model = {
     "distance": DistanceDetector,
     "holo": HoloDetector,
     "lstm": LSTMDetector,
+    "lstm2": LSTM2Detector,
+    "transformer": TransoformerDetector,
+    "roberta": RoBertaDetector,
+    "rf": RFDetector,
+    "cl": ClapLSTMDetector
 }
 
 logger.configure(**config)
@@ -61,20 +68,24 @@ def cli():
     "--method", "-m", help="Method for outlier detection", default="deep_clean"
 )
 @click.option("--interactive", "-i", is_flag=True, help="Interactive detection")
+@click.option("--start", help="Start range", default=0, type=int)
+@click.option("--end", help="End range", default=None, type=int)
 @click.option("--num_gpus", help="Number of GPUs used", default=1)
-@click.option("-k", help="Number of labeled examples", default=2)
-def evaluate(data_path, config_path, output_path, method, interactive, num_gpus, k):
+@click.option("-k", help="Number of iterations", default=2)
+@click.option("-e", help="Number of examples per iteration", default=2)
+def evaluate(data_path, config_path, output_path, method, interactive, start, end, num_gpus, k, e):
     evaluator = Evaluator()
 
     hparams = load_config(config_path)
 
     detector = name2model[method](getattr(hparams, method))
-    getattr(hparams, method).num_gpus = 1
+    getattr(hparams, method).num_gpus = num_gpus
+    getattr(hparams, method).num_examples = e
 
     if interactive:
-        evaluator.ievaluate(detector, data_path, output_path, k)
+        evaluator.ievaluate(detector, method, data_path, output_path, k, data_range=[start, end])
     else:
-        evaluator.evaluate(detector, data_path, output_path)
+        evaluator.evaluate(detector, method, data_path, output_path)
 
 
 @cli.command()
@@ -83,6 +94,7 @@ def clear():
     os.remove("info.log")
     os.remove("error.log")
     os.remove("debug.log")
+
 
 if __name__ == "__main__":
     cli()

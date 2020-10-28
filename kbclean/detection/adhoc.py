@@ -2,13 +2,12 @@ from typing import List
 
 import pandas as pd
 import spacy
-from nltk.util import ngrams, trigrams
-from sklearn.ensemble import IsolationForest
-from sklearn.feature_extraction import DictVectorizer
-
 from kbclean.detection.base import BaseDetector
 from kbclean.utils.data.helpers import str2regex
 from kbclean.utils.search.query import ESQuery
+from nltk.util import ngrams, trigrams
+from sklearn.ensemble import IsolationForest
+from sklearn.feature_extraction import DictVectorizer
 
 regex_dict = {
     "digit": r"[-+]?[0-9]+",

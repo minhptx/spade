@@ -3,18 +3,19 @@ import math
 import os
 import random
 from typing import List
+from unicodedata import bidirectional
 
 import numpy as np
-import pandas as pd
 from pytorch_lightning.core.lightning import LightningModule
 import torch
 from torch.autograd.variable import Variable
+from torchtext.data.utils import get_tokenizer
+from torchtext.experimental.vectors import FastText
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from kbclean.detection.active_transform.holo import HoloDetector
+from kbclean.detection.active_transform.holo import HoloDetector, HoloLearnableModule
 from kbclean.detection.base import BaseModule
-from kbclean.transformation.dsl_learner import DSLGenerator
 from kbclean.transformation.noisy_channel import NCGenerator
 from kbclean.utils.data.helpers import (
     build_vocab,
@@ -23,7 +24,6 @@ from kbclean.utils.data.helpers import (
     unzip_and_stack_tensors,
 )
 from loguru import logger
-from numpy.lib.twodim_base import tri
 from pytorch_lightning import Trainer
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import TensorDataset
@@ -31,75 +31,151 @@ from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
 
 
 class Attention(nn.Module):
-    def __init__(self, query_dim, key_dim, value_dim):
+    def __init__(self, feature_dim):
         super(Attention, self).__init__()
-        self.scale = 1.0 / math.sqrt(query_dim)
+        weight = torch.zeros(feature_dim, 1)
+        nn.init.kaiming_uniform_(weight)
 
-    def forward(self, query, keys, values):
-        # Query = [BxQ]
-        # Keys = [BxTxK]
-        # Values = [BxTxV]
-        # Outputs = energy:[BxT], lin_comb:[BxV]
+        self.W = nn.Parameter(weight)
+        self.b = nn.Parameter(torch.zeros(1))
+        self.feature_dim = feature_dim
 
-        # Here we assume q_dim == k_dim (dot product attention)
+    def forward(self, x):
+        eij = torch.mm(x.view(-1, self.feature_dim), self.W).view(-1, x.shape[1]) + self.b
 
-        query = query.transpose(0, 1)  # [BxQ] -> [Bx1xQ]
-        keys = keys.transpose(1, 2)  # [BxTxK] -> [BxKxT]
-        energy = torch.bmm(query, keys)  # [Bx1xQ]x[BxKxT] -> [Bx1xT]
-        energy = F.softmax(energy.mul_(self.scale), dim=2)  # scale, normalize
+        eij = torch.tanh(eij)
+        a = torch.exp(eij)
 
-        linear_combination = torch.bmm(energy, values).squeeze(
-            1
-        )  # [Bx1xT]x[BxTxV] -> [BxV]
-        return linear_combination
+        a = a / (torch.sum(a, 1, keepdim=True) + 1e-10)
+        weighted_input = x * torch.unsqueeze(a, -1)
+        return torch.sum(weighted_input, dim=1)
 
 
-class LSTMModel(BaseModule):
+class LSTMModel(nn.Module):
     def __init__(self, hparams):
         super().__init__()
 
         self.hparams = hparams
 
+        self.dropout = nn.Dropout(self.hparams.dropout)
+
         self.regex_embedding = nn.Embedding(
             self.hparams.regex_size, self.hparams.reg_emb_dim
         )
-        self.char_embedding = nn.Embedding(
-            self.hparams.vocab_size, self.hparams.char_emb_dim
+
+        self.char_lstm = nn.GRU(
+            300, self.hparams.char_hid_dim, batch_first=True, bidirectional=True
         )
+
+        self.reg_lstm = nn.GRU(
+            self.hparams.reg_emb_dim,
+            self.hparams.reg_hid_dim,
+            batch_first=True,
+            bidirectional=True,
+        )
+
+        self.char_attention = Attention(self.hparams.char_hid_dim * 2)
+
+        self.reg_attention = Attention(self.hparams.reg_hid_dim * 2)
+
+        self.fc = nn.Linear(
+            2 * (self.hparams.char_hid_dim + self.hparams.reg_hid_dim), 1
+        )
+
+    def forward(self, char_inputs, regex_inputs, lengths):
+        packed_inputs = pack_padded_sequence(
+            char_inputs, lengths, batch_first=True, enforce_sorted=False
+        )
+        packed_outputs, h = self.char_lstm(packed_inputs)
+        outputs, _ = pad_packed_sequence(packed_outputs, batch_first=True)
+        h = torch.cat([h[0:1, :, :], h[1:, :, :]], dim=2)
+
+        char_attn_outputs = self.char_attention(outputs)
+
+        regex_inputs = Variable(self.regex_embedding(regex_inputs), requires_grad=True)
+
+        packed_inputs = pack_padded_sequence(
+            regex_inputs, lengths, batch_first=True, enforce_sorted=False
+        )
+        packed_outputs, h = self.reg_lstm(packed_inputs)
+        outputs, _ = pad_packed_sequence(packed_outputs, batch_first=True)
+        h = torch.cat([h[0:1, :, :], h[1:, :, :]], dim=2)
+
+        reg_attn_outputs = self.reg_attention(outputs)
+
+        attn_outputs = torch.cat([char_attn_outputs, reg_attn_outputs], dim=1)
+
+        return torch.sigmoid(self.fc(attn_outputs))
+
+
+class DistLSTMModel(BaseModule):
+    def __init__(self, hparams):
+        super().__init__()
+
+        self.hparams = hparams
 
         self.dropout = nn.Dropout(self.hparams.dropout)
 
-        self.char_regex_lstm = nn.LSTM(
+        self.regex_embedding = nn.Embedding(
+            self.hparams.regex_size, self.hparams.reg_emb_dim
+        )
+
+        self.char_lstm = nn.GRU(
+            300, self.hparams.char_hid_dim, batch_first=True, bidirectional=True
+        )
+
+        self.reg_lstm = nn.GRU(
             self.hparams.reg_emb_dim,
-            self.hparams.hid_dim,
+            self.hparams.reg_hid_dim,
             batch_first=True,
+            bidirectional=True,
         )
-        self.attention = Attention(
-            self.hparams.hid_dim, self.hparams.hid_dim, self.hparams.hid_dim
+
+        self.char_attention = Attention(self.hparams.char_hid_dim * 2)
+
+        self.reg_attention = Attention(self.hparams.reg_hid_dim * 2)
+
+        self.dropout = nn.Dropout(self.hparams.dropout)
+
+        self.fc = nn.Linear(
+            2 * (self.hparams.char_hid_dim + self.hparams.reg_hid_dim), 1
         )
-        self.fc = nn.Linear(self.hparams.hid_dim, 1)
 
     def forward(self, char_inputs, regex_inputs, lengths):
-        regex_embed = self.regex_embedding(regex_inputs)
-        # reg_char_inputs = char_embed
-        # reg_char_inputs = Variable(torch.cat([char_embed, regex_embed], dim=2), requires_grad=True)
-        reg_inputs = Variable(regex_embed, requires_grad=True)
-        
+        packed_inputs = pack_padded_sequence(
+            char_inputs, lengths, batch_first=True, enforce_sorted=False
+        )
+        packed_outputs, h = self.char_lstm(packed_inputs)
+        outputs, _ = pad_packed_sequence(packed_outputs, batch_first=True)
+        h = torch.cat([h[0:1, :, :], h[1:, :, :]], dim=2)
 
-        reg_inputs = self.dropout(reg_inputs)
+        char_attn_outputs = self.char_attention(outputs)
+
+        regex_inputs = self.regex_embedding(regex_inputs)
 
         packed_inputs = pack_padded_sequence(
-            reg_inputs, lengths, batch_first=True, enforce_sorted=False
+            regex_inputs, lengths, batch_first=True, enforce_sorted=False
         )
-        packed_outputs, (h, c) = self.char_regex_lstm(packed_inputs)
+        packed_outputs, h = self.reg_lstm(packed_inputs)
         outputs, _ = pad_packed_sequence(packed_outputs, batch_first=True)
-        attn_outputs = self.attention(h, outputs, outputs)
-        return torch.sigmoid(self.fc(attn_outputs))
+        h = torch.cat([h[0:1, :, :], h[1:, :, :]], dim=2)
+
+        reg_attn_outputs = self.reg_attention(outputs)
+
+        attn_outputs = torch.cat([char_attn_outputs, reg_attn_outputs], dim=1)
+
+        return self.dropout(attn_outputs)
 
     def training_step(self, batch, batch_idx):
-        char_inputs, regex_inputs, lengths, labels = batch
+        word_inputs, regex_inputs, lengths, labels = batch
         labels = labels.view(-1, 1)
-        probs = self.forward(char_inputs, regex_inputs, lengths)
+        outputs = self.forward(word_inputs, regex_inputs, lengths)
+
+        mean_outputs = torch.mean(outputs, dim=0)
+        distance = outputs - mean_outputs
+
+        probs = torch.sigmoid(self.fc(torch.cat([outputs], dim=1)))
+
         loss = F.binary_cross_entropy(probs, labels.float())
         preds = probs >= 0.5
         acc = (labels == preds).sum().float() / labels.shape[0]
@@ -107,9 +183,13 @@ class LSTMModel(BaseModule):
         return {"loss": loss, "acc": acc, "log": logs, "progress_bar": logs}
 
     def validation_step(self, batch, batch_idx):
-        char_inputs, regex_inputs, lengths, labels = batch
+        word_inputs, regex_inputs, lengths, labels = batch
         labels = labels.view(-1, 1)
-        probs = self.forward(char_inputs, regex_inputs, lengths)
+        outputs = self.forward(word_inputs, regex_inputs, lengths)
+
+        mean_outputs = torch.mean(outputs, dim=0)
+        distance = outputs - mean_outputs
+        probs = torch.sigmoid(self.fc(torch.cat([outputs], dim=1)))
         loss = F.binary_cross_entropy(probs, labels.float())
 
         preds = probs >= 0.5
@@ -121,14 +201,12 @@ class LSTMModel(BaseModule):
 
 
 class CoTeachingLSTMModel(LightningModule):
-    def __init__(self, hparams, char_vocab):
+    def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
-        
+
         self.first_model = LSTMModel(hparams)
         self.second_model = LSTMModel(hparams)
-
-        self.char_vocab = char_vocab
 
         self.rate_schedule = np.ones(hparams.num_epochs) * hparams.forget_rate
         self.rate_schedule[: hparams.num_gradual] = np.linspace(
@@ -138,7 +216,6 @@ class CoTeachingLSTMModel(LightningModule):
     def loss_coteaching(self, y_1, y_2, t, forget_rate):
         loss_1 = F.binary_cross_entropy(y_1, t, reduction="none")
         ind_1_sorted = torch.argsort(loss_1.squeeze())
-
 
         loss_2 = F.binary_cross_entropy(y_2, t, reduction="none")
         ind_2_sorted = torch.argsort(loss_2.squeeze())
@@ -160,11 +237,11 @@ class CoTeachingLSTMModel(LightningModule):
         return (result1 + result2) / 2
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        char_inputs, regex_inputs, lengths, labels = batch
-        
+        word_inputs, regex_inputs, lengths, labels = batch
+
         if optimizer_idx == 0:
-            y1 = self.first_model(char_inputs, regex_inputs, lengths)
-            y2 = self.second_model(char_inputs, regex_inputs, lengths)
+            y1 = self.first_model(word_inputs, regex_inputs, lengths)
+            y2 = self.second_model(word_inputs, regex_inputs, lengths)
             self.labels = labels.view(-1, 1).float()
 
             preds_1 = y1 >= 0.5
@@ -176,9 +253,6 @@ class CoTeachingLSTMModel(LightningModule):
             self.loss_1, self.loss_2, indices_1, indices_2 = self.loss_coteaching(
                 y1, y2, self.labels, self.rate_schedule[self.current_epoch]
             )
-            logger.debug(f"Big-loss examples 1: {[(''.join(self.char_vocab.lookup_tokens(char_inputs[index].cpu().numpy().tolist())).strip(), labels[index]) for index in indices_1]}")
-            logger.debug(f"Big-loss examples 2: {[(''.join(self.char_vocab.lookup_tokens(char_inputs[index].cpu().numpy().tolist())).strip(), labels[index]) for index in indices_2]}")
-
 
             logs = {
                 "train_loss1": self.loss_1,
@@ -210,7 +284,7 @@ class CoTeachingLSTMModel(LightningModule):
     def validation_step(self, batch, batch_idx):
         char_inputs, regex_inputs, lengths, labels = batch
         labels = labels.view(-1, 1)
-        probs= self.forward(char_inputs, regex_inputs, lengths)
+        probs = self.forward(char_inputs, regex_inputs, lengths)
         loss = F.binary_cross_entropy(probs, labels.float())
 
         preds = probs >= 0.5
@@ -234,25 +308,24 @@ class LSTMDetector(HoloDetector):
         self.generator = NCGenerator()
         self.model = None
 
-        if hparams.gen_method == "DSL":
-            logger.warning("Running DSL")
-            self.generator = DSLGenerator()
-
+        self.fasttext = FastText()
+        self.tokenizer = get_tokenizer("spacy")
 
     def extract_features(self, data, labels=None, retrain=False):
-        data = ["^" + x for x in data]
         regex_data = [str2regex(x, match_whole_token=False) for x in data]
+
         if retrain:
-            self.char_vocab = build_vocab(list(itertools.chain.from_iterable(data)))
-            self.hparams.model.vocab_size = len(self.char_vocab)
             self.regex_vocab = build_vocab(
                 list(itertools.chain.from_iterable([regex_data]))
             )
             self.hparams.model.regex_size = len(self.regex_vocab)
+            self.model = CoTeachingLSTMModel(self.hparams.model)
 
         char_data, lengths = stack_and_pad_tensors(
             [
-                torch.tensor(self.char_vocab.lookup_indices(list(str_value)))
+                self.fasttext.lookup_vectors(list(str_value.lower()))
+                if str_value
+                else torch.zeros(1, 300)
                 for str_value in data
             ]
         )
@@ -260,6 +333,8 @@ class LSTMDetector(HoloDetector):
         regex_data, _ = stack_and_pad_tensors(
             [
                 torch.tensor(self.regex_vocab.lookup_indices(list(str_value)))
+                if str_value
+                else torch.zeros(1).long()
                 for str_value in regex_data
             ]
         )
@@ -271,28 +346,21 @@ class LSTMDetector(HoloDetector):
         return char_data, regex_data, lengths
 
     def reset(self):
-        self.model = CoTeachingLSTMModel(self.hparams.model, self.model.char_vocab)
+        self.model = CoTeachingLSTMModel(self.hparams.model)
 
     def idetect_values(self, ec_str_pairs: str, values: List[str]):
         data, labels = self.generator.fit_transform(ec_str_pairs, values)
 
-        if self.model is None:
-            feature_tensors_with_labels = self.extract_features(
-                data, labels, retrain=True
-            )
-            self.model = CoTeachingLSTMModel(self.hparams.model, self.char_vocab)
-
-        else:
-            feature_tensors_with_labels = self.extract_features(
-                data, labels, retrain=False
-            )
+        feature_tensors_with_labels = self.extract_features(data, labels, retrain=True)
 
         dataset = TensorDataset(*feature_tensors_with_labels)
 
         train_dataloader, _, _ = split_train_test_dls(
-            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size, ratios=[1, 0, 0]
+            dataset,
+            unzip_and_stack_tensors,
+            self.hparams.model.batch_size,
+            ratios=[1, 0, 0],
         )
-
 
         self.model.train()
 
@@ -308,45 +376,76 @@ class LSTMDetector(HoloDetector):
             )
 
             trainer.fit(
-                self.model,
-                train_dataloader=train_dataloader,
+                self.model, train_dataloader=train_dataloader,
             )
 
         feature_tensors = self.extract_features(values)
 
-        # self.model.eval()
+        self.model.eval()
         pred = self.model.forward(*feature_tensors)
         return pred.squeeze().detach().cpu().numpy()
 
 
-class LSTMNaiveDetector(LSTMDetector):
-    def idetect_values(self, ec_str_pairs: str, values: List[str]):
-        data, labels = (
-            [x[0] for x in ec_str_pairs],
-            [0 for _ in range(len(ec_str_pairs))],
+class LSTM2Detector(HoloDetector):
+    def __init__(self, hparams):
+        self.hparams = hparams
+
+        self.generator = NCGenerator()
+
+        self.fasttext = FastText()
+
+    def extract_features(self, data, labels=None, retrain=False):
+        regex_data = [str2regex(x, match_whole_token=False) for x in data]
+
+        if retrain:
+            self.regex_vocab = build_vocab(
+                list(itertools.chain.from_iterable([regex_data]))
+            )
+            self.hparams.model.regex_size = len(self.regex_vocab)
+            self.model = DistLSTMModel(self.hparams.model)
+
+        char_data, lengths = stack_and_pad_tensors(
+            [
+                self.fasttext.lookup_vectors(list(str_value.lower()))
+                if str_value
+                else torch.zeros(1, 300)
+                for str_value in data
+            ]
         )
-        data = np.repeat(data, len(values) // len(ec_str_pairs)).tolist()
-        labels = np.repeat(labels, len(values) // len(ec_str_pairs)).tolist()
-        data.extend(values)
-        labels.extend([0.6 for _ in range(len(values))])
 
-        if self.model is None:
-            feature_tensors_with_labels = self.extract_features(
-                data, labels, retrain=True
-            )
-            self.model = LSTMModel(self.hparams.model)
+        regex_data, _ = stack_and_pad_tensors(
+            [
+                torch.tensor(self.regex_vocab.lookup_indices(list(str_value)))
+                if str_value
+                else torch.zeros(1).long()
+                for str_value in regex_data
+            ]
+        )
 
-        else:
-            feature_tensors_with_labels = self.extract_features(
-                data, labels, retrain=False
-            )
+        if labels is not None:
+            label_data = torch.tensor(labels)
 
-        feature_tensors_with_labels = self.extract_features(data, labels)
+            return char_data, regex_data, lengths, label_data
+        return char_data, regex_data, lengths
+
+    def reset(self):
+        self.model = DistLSTMModel(self.hparams.model)
+
+    def idetect_values(self, ec_str_pairs: str, values: List[str], recommender):
+        print("Values", values[:10])
+        data, labels = self.generator.fit_transform(ec_str_pairs, values, recommender)
+
+        feature_tensors_with_labels = self.extract_features(data, labels, retrain=True)
 
         dataset = TensorDataset(*feature_tensors_with_labels)
 
-        train_dataloader, val_dataloader, _ = split_train_test_dls(
-            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size,
+        train_dataloader, _, _ = split_train_test_dls(
+            dataset,
+            unzip_and_stack_tensors,
+            self.hparams.model.batch_size,
+            ratios=[1, 0],
+            num_workers=1,
+            pin_memory=False,
         )
 
         self.model.train()
@@ -357,18 +456,23 @@ class LSTMNaiveDetector(LSTMDetector):
             trainer = Trainer(
                 gpus=self.hparams.num_gpus,
                 distributed_backend="dp",
-                # logger=MetricsTensorBoardLogger("tt_logs", name="active"),
-                max_epochs=20,
+                max_epochs=self.hparams.model.num_epochs,
+                early_stop_callback=None,
+                val_percent_check=0,
             )
 
             trainer.fit(
-                self.model,
-                train_dataloader=train_dataloader,
-                val_dataloaders=[val_dataloader],
+                self.model, train_dataloader=train_dataloader,
             )
 
-        feature_tensors = self.extract_features(values)
+        feature_tensors = self.extract_features(values, retrain=False)
 
         self.model.eval()
-        pred = self.model.forward(*feature_tensors)
+        outputs = self.model.forward(*feature_tensors)
+
+        mean_outputs = torch.mean(outputs, dim=0)
+        distance = outputs - mean_outputs
+        pred = torch.sigmoid(self.model.fc(torch.cat([outputs], dim=1)))
+
         return pred.squeeze().detach().cpu().numpy()
+

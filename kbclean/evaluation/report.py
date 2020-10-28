@@ -9,7 +9,7 @@ import numpy as np
 
 class Report:
     def __init__(self, prob_df, raw_df, cleaned_df, groundtruth_df, threshold=0.5):
-        self.threshold = 0.4
+        self.threshold = threshold
         detected_df = prob_df.applymap(lambda x: x >= self.threshold)
 
         flat_result = detected_df.stack().values.tolist()
@@ -33,27 +33,30 @@ class Report:
             return prob_df.loc[x["id"], x["col"]]
 
         fn_df = diff_dfs(raw_df, cleaned_df)
-        fn_df["prediction"] = fn_df.apply(get_prob, axis=1)
-        fn_df = fn_df[fn_df["prediction"] >= self.threshold]
+        if fn_df is not None:
+            fn_df["prediction"] = fn_df.apply(get_prob, axis=1)
+            fn_df = fn_df[fn_df["prediction"] >= self.threshold]
 
-        diff_mask = not_equal(groundtruth_df, result_df)
-        ne_stacked = diff_mask.stack()
-        changed = ne_stacked[ne_stacked]
+            diff_mask = not_equal(groundtruth_df, result_df)
+            ne_stacked = diff_mask.stack()
+            changed = ne_stacked[ne_stacked]
 
-        changed.index.names = ["id", "col"]
-        difference_locations = np.where(diff_mask)
-        changed_from = raw_df.values[difference_locations]
-        changed_to = cleaned_df.values[difference_locations]
-        fp_df = pd.DataFrame(
-            {"from": changed_from, "to": changed_to}, index=changed.index
-        )
-        fp_df["prediction"] = 0.0
-        fp_df["id"] = fp_df.index.get_level_values("id")
-        fp_df["col"] = fp_df.index.get_level_values("col")
-        fp_df["prediction"] = fp_df.apply(get_prob, axis=1)
-        fp_df = fp_df[fp_df["prediction"] <= self.threshold]
+            changed.index.names = ["id", "col"]
+            difference_locations = np.where(diff_mask)
+            changed_from = raw_df.values[difference_locations]
+            changed_to = cleaned_df.values[difference_locations]
+            fp_df = pd.DataFrame(
+                {"from": changed_from, "to": changed_to}, index=changed.index
+            )
+            fp_df["prediction"] = 0.0
+            fp_df["id"] = fp_df.index.get_level_values("id")
+            fp_df["col"] = fp_df.index.get_level_values("col")
+            fp_df["prediction"] = fp_df.apply(get_prob, axis=1)
+            fp_df = fp_df[fp_df["prediction"] <= self.threshold]
 
-        concat_df = pd.concat([fp_df, fn_df], ignore_index=True)
+            concat_df = pd.concat([fp_df, fn_df], ignore_index=True)
+        else:
+            concat_df = pd.DataFrame(columns=["from", "to", "id", "col", "prediction"])
 
         score_df = pd.DataFrame()
         score_sr = raw_df.stack()
@@ -65,6 +68,7 @@ class Report:
         score_df["id"] = score_df.index.get_level_values("id")
         score_df["col"] = score_df.index.get_level_values("col")
         score_df["score"] = prob_df.stack().values.tolist()
+        score_df["result"] = groundtruth_df.iloc[:, 0].values.tolist()
         return concat_df, score_df
 
     def serialize(self, output_path):

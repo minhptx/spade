@@ -7,9 +7,9 @@ from kbclean.utils.data.helpers import str2regex
 def xngrams(value, n, add_regex=True):
     if add_regex:
         value = "^" + value + "$"
-    try:
+    if len(value) >= n:
         return list(set(ngrams(value, n)))
-    except:
+    else:
         return [value]
 
 

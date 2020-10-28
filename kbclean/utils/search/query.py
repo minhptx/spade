@@ -27,7 +27,7 @@ class ESQuery:
 
     def get_char_ngram_counts(self, ngrams):
         if not ngrams:
-            return [100000]
+            return [0]
         query = "{}\n" + "\n{}\n".join(
             [
                 json.dumps({"query": {"term": {"data": {"value": ngram}}}})
@@ -36,7 +36,7 @@ class ESQuery:
         )
         return [
             ESQuery.get_results(resp, "count", default_value=0)
-            for resp in self.es.msearch(query, index="char_ngram")["responses"]
+            for resp in self.es.msearch(query, index="char_ngram", request_timeout=60)["responses"]
         ]
 
     def get_tok_ngram_counts(self, ngrams):
@@ -50,7 +50,7 @@ class ESQuery:
         )
         return [
             ESQuery.get_results(resp, "count", default_value=0)
-            for resp in self.es.msearch(query, index="tok_ngram")["responses"]
+            for resp in self.es.msearch(query, index="tok_ngram", request_timeout=60)["responses"]
         ]
 
     def get_coexist_counts(self, values):
