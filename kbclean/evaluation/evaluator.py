@@ -43,7 +43,6 @@ class Evaluator:
             name2cleaned[name] = pd.read_csv(
                 cleaned_path / name, keep_default_na=False, dtype=str
             ).applymap(lambda x: ftfy.fix_text(x[:100]))
-
             name2groundtruth[name] = name2raw[name] == name2cleaned[name]
         return name2raw, name2cleaned, name2groundtruth
 
@@ -61,8 +60,8 @@ class Evaluator:
         prob_df = detector.detect(raw_df, cleaned_df)
         return Report(prob_df, raw_df, cleaned_df, groundtruth_df)
 
-    def ievaluate_df(self, detector, col2examples, recommender, raw_df, cleaned_df, groundtruth_df):
-        prob_df = detector.idetect(raw_df, col2examples, recommender)
+    def ievaluate_df(self, detector, recommender, raw_df, cleaned_df, groundtruth_df, score_df):
+        prob_df = detector.idetect(raw_df, score_df, recommender)
         return Report(prob_df, raw_df, cleaned_df, groundtruth_df)
 
     def fake_ievaluate_df(self, detector, raw_df, cleaned_df, groundtruth_df, k):
@@ -106,41 +105,46 @@ class Evaluator:
         name2ireport = defaultdict(dict)
 
         for name in name2raw.keys():
-            # if name not in ["Beers_city.csv"]:
-                # continue
             print(f"Evaluating on {name}...")
-            if all(name2groundtruth[name].iloc[:, 0] == True):
+            if all(name2groundtruth[name].stack() == True):
                 continue
             logger.info(f"Evaluating on {name}...")
             recommender = ActiveLearner(
                 name2raw[name], name2cleaned[name], detector.hparams
             )
-            scores_df = None
 
-            start_time = time.time()
+            score_df = None
 
             for i in range(step):
+                start_time = time.time()
                 logger.info("----------------------------------------------------")
                 logger.info(f"Running active learning step {i}...")
-
-                col2examples = recommender.update(i, scores_df)
+                for col in name2raw[name].columns:
+                    recommender.update(i, col, score_df)
                 running_time = time.time() - start_time
                 logger.info(
-                    f"Total recommendation (+ running time) for step {i}: {running_time}"
+                    f"Total recommendation time for step {i}: {running_time}"
                 )
 
-                running_times.append(running_time)
+                start_time = time.time()
+
 
                 start_time = time.time()
 
                 report = self.ievaluate_df(
                     detector,
-                    col2examples,
                     recommender,
                     name2raw[name],
                     name2cleaned[name],
                     name2groundtruth[name],
+                    score_df
                 )
+
+                logger.info(
+                    f"Total running time for step {i}: {running_time}"
+                )
+
+                running_times.append(running_time)
 
                 logger.info("Report:\n" + str(report.report))
 
@@ -150,7 +154,7 @@ class Evaluator:
 
 
                 name2ireport[i][name] = report.report
-                scores_df = report.scores
+                score_df = report.scores
                 detector.reset()
 
         for i in range(step):

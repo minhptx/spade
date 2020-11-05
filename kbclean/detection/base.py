@@ -57,23 +57,6 @@ class Module(metaclass=ABCMeta):
         pass
 
 
-class BaseModule(LightningModule):
-    def training_epoch_end(self, outputs: list):
-        avg_loss = torch.stack([x["loss"] for x in outputs], dim=0).mean()
-        avg_acc = torch.stack([x["acc"] for x in outputs], dim=0).mean()
-        logs = {
-            "train_loss": avg_loss,
-            "train_acc": avg_acc,
-        }
-        return {"avg_train_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-    def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs], dim=0).mean()
-        avg_acc = torch.stack([x["val_acc"] for x in outputs], dim=0).mean()
-        logs = {"val_loss": avg_loss, "val_acc": avg_acc}
-        return {"avg_val_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-
 class Pipeline:
     def __init__(self, modules, hparams):
         self.hparams = hparams

@@ -1,8 +1,0 @@
-batch_size: 50
-emb_dim: 6
-hid_dim: 6
-num_layers: 1
-num_heads: 3
-dropout: 0.8
-lr: 0.005
-num_epochs: 20

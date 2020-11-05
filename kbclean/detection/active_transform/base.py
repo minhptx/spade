@@ -8,3 +8,6 @@ class BaseActiveLearner(metaclass=ABCMeta):
     @abstractmethod
     def next(self):
         pass
+
+
+

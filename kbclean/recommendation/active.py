@@ -1,19 +1,19 @@
-from datetime import datetime
 import functools
 import itertools
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from functools import lru_cache
-from datasketch.lsh import MinHashLSH
-import nltk
+from kbclean.utils.data.readers import RowBasedValue
 
+import nltk
 import numpy as np
 import pandas as pd
 from kbclean.utils.data.helpers import str2regex
 from kbclean.utils.features.attribute import xngrams
 from kbclean.utils.search.query import ESQuery
 from loguru import logger
-from datasketch import MinHash
+from metal.label_model import LabelModel
+from metal.end_model import EndModel
+
 
 
 def min_ngram_counts(es_query, values):
@@ -88,49 +88,53 @@ def min_tok_ngram_counts(es_query, values):
 
 class BestValuePicker(metaclass=ABCMeta):
     @abstractmethod
-    def fit(self, values):
+    def fit(self, row_values):
         pass
 
     @abstractmethod
-    def predict(self, values):
+    def predict(self, row_values, scores=None):
         pass
 
-    def fit_predict(self, values):
-        self.fit(values)
+    def fit_predict(self, row_values, scores=None):
+        self.fit(row_values)
 
-        return self.predict(values)
+        return self.predict(row_values, scores)
 
-    def reverse_predict(values):
+    def reverse_predict(row_values, scores=None):
         pass
 
 
-class Uncommoner(BestValuePicker):
+class MinValue(BestValuePicker):
     def __init__(self, es_query, func):
         self.es_query = es_query
         self.func = func
         self.value2count = {}
 
-    def call_func(self, value):
-        return self.func(value)
+    def call_func(self, raw_df):
+        return raw_df.applymap(lambda x: self.func(x))
 
-    def fit(self, values):
+    def fit(self, row_values):
+        str_values = [val.value for val in row_values]
         self.value2count = {
             value: count
-            for value, count in zip(values, self.func(self.es_query, values))
+            for value, count in zip(str_values, self.func(self.es_query, str_values))
         }
 
-    def predict(self, values):
-        counts = [self.value2count[value] for value in values]
-        return np.argmin(counts), np.min(counts) / np.max(counts)
+    def predict(self, row_values, scores=None):
+        counts = list(map(lambda x: self.value2count[x.value], row_values))
 
-    def reverse_predict(self, values):
-        counts = [self.value2count[value] for value in values]
-        sorted_indices = np.argsort(counts)[::-1]
+        return (
+            np.argmin(counts),
+            np.min(counts) / np.mean(counts),
+        )
 
-        return sorted_indices[: int(len(values) * 0.2)]
+    def reverse_predict(self, row_values, scores):
+        counts = list(map(lambda x: self.value2count[x.value], row_values))
+
+        return np.argsort(counts)[-int(len(row_values) * 0.5) :]
 
 
-class MarkovModel(BestValuePicker):
+class MaxProb(BestValuePicker):
     def __init__(self, func=None):
         self.bigram2prob = defaultdict(lambda: 0)
         self.unigram2prob = defaultdict(lambda: 0)
@@ -145,7 +149,7 @@ class MarkovModel(BestValuePicker):
 
     def fit(self, values):
         for value in values:
-            value = self.add_end(value)
+            value = self.add_end(value.value)
             for i in range(len(value) - 1):
                 self.bigram2prob[(value[i], value[i + 1])] += 1
                 self.unigram2prob[value[i]] += 1
@@ -165,15 +169,72 @@ class MarkovModel(BestValuePicker):
 
         return prob
 
-    def predict(self, values):
-        probs = [self.sentence_probability(value) for value in values]
+    def predict(self, row_values, scores=None):
+        counts = list(map(lambda x: self.sentence_probability(x.value), row_values))
+
+        return (
+            np.argmin(counts),
+            np.min(counts) / np.mean(counts),
+        )
+
+    def reverse_predict(self, row_values, scores):
+        counts = list(map(lambda x: self.sentence_probability(x.value), row_values))
+
+        return np.argsort(counts)[-int(len(row_values) * 0.5) :]
+
+
+class MinCoValue(BestValuePicker):
+    def __init__(self):
+        self.covalue2count = defaultdict(defaultdict(lambda: 0))
+        self.value2count = defaultdict(lambda: 0)
+
+    def fit(self, row_values):
+        for row_value in row_values:
+            for col_name, col_value in row_value.row_dict.items():
+                self.covalue2count[row_value.value][(col_value, col_name)] += 1
+                self.value2count[row_value.value] += 1
+
+    def predict(self, row_values, scores=None):
+        probs = list(
+            map(
+                lambda x: min(list(self.covalue2count[x.value].values()))
+                / self.value2count[x.value],
+                row_values,
+            )
+        )
+
         return np.argmin(probs), np.min(probs)
 
-    def reverse_predict(self, values):
-        probs = [self.sentence_probability(value) for value in values]
-        sorted_indices = np.argsort(probs)[::-1]
+    def reverse_predict(self, row_values, scores=None):
+        probs = list(
+            map(
+                lambda x: min(list(self.covalue2count[x.value].values()))
+                / self.value2count[x.value],
+                row_values,
+            )
+        )
 
-        return sorted_indices[: int(len(values) * 0.2)]
+        return np.argsort(probs)[-int(len(row_values) * 0.5) :]
+
+
+class MaxAmbiguous(BestValuePicker):
+    def fit(self, row_values):
+        pass
+
+    def predict(self, row_values, scores):
+        if scores is None:
+            return None, float("inf")
+
+        score_arr = np.abs(np.asfarray(scores) - 0.5)
+        return np.argmin(score_arr), np.min(score_arr)
+
+    def reverse_predict(self, row_values, scores):
+        if scores is None:
+            return None, float("inf")
+
+        score_arr = np.abs(np.asfarray(scores) - 0.5)
+
+        return np.argsort(score_arr)[-int(len(score_arr) * 0.5) :]
 
 
 class ActiveLearner:
@@ -182,151 +243,211 @@ class ActiveLearner:
 
         self.raw_df = raw_df
         self.cleaned_df = cleaned_df
+
+        self.raw_records = raw_df.to_dict("records")
+        self.cleaned_records = cleaned_df.to_dict("recordss")
+
+        self.raw_col2values = {
+            col: [
+                RowBasedValue(x, col, row_dict)
+                for x, row_dict in zip(
+                    self.raw_df[col].values.tolist(), self.raw_records
+                )
+            ]
+            for col in self.raw_df.columns
+        }
+        self.cleaned_col2values = {
+            col: [
+                RowBasedValue(x, col, row_dict)
+                for x, row_dict in zip(
+                    self.cleaned_df[col].values.tolist(), self.cleaned_records
+                )
+            ]
+            for col in self.cleaned_df.columns
+        }
+
         self.es_query = ESQuery.get_instance(hparams.es_host, hparams.es_port)
 
         self.col2examples = defaultdict(list)
 
-        self.raw_col2values = {
-            col: self.raw_df[col].values.tolist() for col in self.raw_df.columns
-        }
-        self.cleaned_col2values = {
-            col: self.cleaned_df[col].values.tolist() for col in self.cleaned_df.columns
-        }
-
-        self.name2criteria = {
-            "min_ngram": Uncommoner(self.es_query, min_ngram_counts),
-            "min_tok_ngram": Uncommoner(self.es_query, min_tok_ngram_counts),
-            "min_sym_ngram": Uncommoner(self.es_query, min_sym_ngram_counts),
-            "markov_char": MarkovModel(),
-            "markov_sym": MarkovModel(
-                functools.partial(str2regex, match_whole_token=False)
-            ),
-            "markov_tok_sym": MarkovModel(str2regex),
+        self.col2criteria = {
+            col: {
+                "min_ngram": MinValue(self.es_query, min_ngram_counts),
+                "min_tok_ngram": MinValue(self.es_query, min_tok_ngram_counts),
+                "min_sym_ngram": MinValue(self.es_query, min_sym_ngram_counts),
+                "markov_char": MaxProb(),
+                "markov_sym": MaxProb(
+                    functools.partial(str2regex, match_whole_token=False)
+                ) 
+            }
+            for col in self.raw_col2values.keys()
+            # "max_ambiguous": MaxAmbiguous(),
         }
 
-        self.chosen_criteria = []
-        self.positive_criteria = []
+        self.col2chosen_criteria = defaultdict(list)
+        self.col2positive_criteria = defaultdict(list)
 
-    def next_column(self):
-        return self.raw_df.columns[0]
-
-    def most_ambigous(self, best_col, scores_df):
-        best_col_df = scores_df[scores_df["col"] == best_col]
-        best_col_df["am_score"] = best_col_df["score"].apply(lambda x: abs(x - 0.5))
-        max_index = best_col_df["am_score"].argmin()
-
-        return (
-            best_col_df["from"][max_index].item(),
-            best_col_df["to"][max_index].item(),
-        )
-
-    def most_positives(self, values):
+    def most_positives(self, row_values, scores):
         positive_lists = []
-        if not self.positive_criteria:
-            return values
-        for name in self.positive_criteria:
-            positive_lists.append(set(self.name2criteria[name].reverse_predict(values)))
+        column_name = row_values[0].column_name
+
+        if not self.col2chosen_criteria[column_name]:
+            return row_values
+
+
+        for name in self.col2chosen_criteria[column_name]:
+            positive_lists.append(
+                set(self.col2criteria[column_name][name].reverse_predict(row_values, scores))
+            )
 
         final_indices = positive_lists[0]
 
         for positive_list in positive_lists[1:]:
             final_indices = final_indices.union(positive_list)
 
-        return [values[index] for index in final_indices]
+        return [row_values[idx] for idx in final_indices]
 
-    def next(self, i, scores_df):
-        best_col = self.next_column()
-        best_score = 10
-        best_example = None
-        best_cleaned_example = None
+    def next(self, i, col, score_df):
+        best_col = col
+        best_score = float("inf")
+        best_index = None
         best_criterion = None
 
         if not self.raw_col2values[best_col]:
             return best_col, [None, None]
 
-        if len(self.chosen_criteria) == len(self.name2criteria):
-            self.chosen_criteria = []
+        if len(self.col2chosen_criteria[best_col]) == len(self.col2criteria[best_col]):
+            self.col2chosen_criteria[best_col]
 
-        for name, criterion in self.name2criteria.items():
-            if name in self.chosen_criteria:
-                continue
-            if i == 0:
-                index, score = criterion.fit_predict(self.raw_col2values[best_col])
+        for name, criterion in self.col2criteria[col].items():
+            if score_df is not None:
+                scores = score_df[best_col]
             else:
-                index, score = criterion.predict(self.raw_col2values[best_col])
+                scores = None
 
-            logger.debug(
-                f"Criterion with example: {name} '{self.raw_col2values[best_col][index]}' --- Score: {score}"
-            )
+            if i == 0:
+                index, score = criterion.fit_predict(
+                    self.raw_col2values[best_col], scores
+                )
+            else:
+                index, score = criterion.predict(self.raw_col2values[best_col], scores)
+
+            if index is not None:
+                logger.debug(
+                    f"Criterion with example: {name} '{self.raw_col2values[best_col][index].value}' --- Score: {score}"
+                )
 
             if score < best_score:
                 best_score = score
                 best_criterion = name
-                best_example = self.raw_col2values[best_col][index]
-                best_cleaned_example = self.cleaned_col2values[best_col][index]
+                best_index = index
 
         logger.debug(
             "Best criterion with example: %s '%s' --- Score: %s"
-            % (str(best_criterion), best_example, best_score)
+            % (
+                str(best_criterion),
+                self.raw_col2values[best_col][best_index],
+                best_score,
+            )
         )
-        if best_example is not None:
-            indices = np.where(np.array(self.raw_col2values[best_col]) == best_example)[
-                0
-            ].tolist()
+        if best_index is not None:
+            best_raw = self.raw_col2values[best_col][best_index]
+            best_cleaned = self.cleaned_col2values[best_col][best_index]
+
+            indices = np.where(
+                np.asarray([x.value for x in self.raw_col2values[best_col]])
+                == best_raw.value
+            )[0].tolist()
 
             for index in reversed(indices):
                 self.raw_col2values[best_col].pop(index)
                 self.cleaned_col2values[best_col].pop(index)
 
-            if best_example != best_cleaned_example:
-                self.positive_criteria.append(best_criterion)
-            self.chosen_criteria.append(best_criterion)
+            if best_raw.value == best_cleaned.value:
+                self.col2positive_criteria[best_col].append(best_criterion)
+            self.col2chosen_criteria[best_col].append(best_criterion)
 
-            return best_col, (best_example, best_cleaned_example)
-        else:
-            if i == 0:
-                return best_col, (None, None)
-            else:
-                example = self.most_ambigous(best_col, scores_df)
-                indices = np.where(
-                    np.array(self.raw_col2values[best_col]) == example[0]
-                )[0].tolist()
-                for index in reversed(indices):
-                    self.raw_col2values[best_col].pop(index)
-                    self.cleaned_col2values[best_col].pop(index)
+            return best_col, (best_raw, best_cleaned)
+        return best_col, (None, None)
 
-                return best_col, example
-
-    def update(self, i, scores):
+    def update(self, i, col, scores):
         for j in range(self.hparams.num_examples):
-            result = self.next(i * self.hparams.num_examples + j, scores)
+            result = self.next(i * self.hparams.num_examples + j, col, scores)
             if result[1][0] is not None:
                 col, (raw_value, cleaned_value) = result
                 logger.debug(
                     f'New example in column [{col}]: "{raw_value}" vs "{cleaned_value}"'
                 )
-                self.col2examples[col].append(
-                    {"raw": raw_value, "cleaned": cleaned_value}
-                )
+                self.col2examples[col].append((raw_value, cleaned_value))
             else:
                 logger.debug("No outlier detected in this iteration")
-        return self.col2examples
 
 
-class MinimalPairFinder:
+
+class MetalLeaner(ActiveLearner):
     def __init__(self):
-        self.lsh = MinHashLSH(threshold=0.8, num_perm=256)
+        self.label_model = LabelModel()
+        self.end_model = EndModel()
 
-    def min_hash(self, value):
-        min_hash = MinHash()
-        for c in set(list(value)):
-            min_hash.update(c.encode("utf8"))
+    def next(self, i, col, score_df):
+        best_col = col
+        best_score = float("inf")
+        best_index = None
+        best_criterion = None
 
-        return min_hash
+        if not self.raw_col2values[best_col]:
+            return best_col, [None, None]
 
-    def fit(self, values):
-        for value in values:
-            self.lsh.insert(value, self.min_hash(value))
+        if len(self.col2chosen_criteria[best_col]) == len(self.col2criteria[best_col]):
+            self.col2chosen_criteria[best_col]
 
-    def transform(self, values):
-        pass
+        for name, criterion in self.col2criteria[col].items():
+            if score_df is not None:
+                scores = score_df[best_col]
+            else:
+                scores = None
+
+            if i == 0:
+                index, score = criterion.fit_predict(
+                    self.raw_col2values[best_col], scores
+                )
+            else:
+                index, score = criterion.predict(self.raw_col2values[best_col], scores)
+
+            if index is not None:
+                logger.debug(
+                    f"Criterion with example: {name} '{self.raw_col2values[best_col][index].value}' --- Score: {score}"
+                )
+
+            if score < best_score:
+                best_score = score
+                best_criterion = name
+                best_index = index
+
+        logger.debug(
+            "Best criterion with example: %s '%s' --- Score: %s"
+            % (
+                str(best_criterion),
+                self.raw_col2values[best_col][best_index],
+                best_score,
+            )
+        )
+        if best_index is not None:
+            best_raw = self.raw_col2values[best_col][best_index]
+            best_cleaned = self.cleaned_col2values[best_col][best_index]
+
+            indices = np.where(
+                np.asarray([x.value for x in self.raw_col2values[best_col]])
+                == best_raw.value
+            )[0].tolist()
+
+            for index in reversed(indices):
+                self.raw_col2values[best_col].pop(index)
+                self.cleaned_col2values[best_col].pop(index)
+
+            if best_raw.value == best_cleaned.value:
+                self.col2positive_criteria[best_col].append(best_criterion)
+            self.col2chosen_criteria[best_col].append(best_criterion)
+
+            return best_col, (best_raw, best_cleaned)
+        return best_col, (None, None)

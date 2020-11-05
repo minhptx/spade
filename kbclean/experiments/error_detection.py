@@ -1,17 +1,11 @@
-from kbclean.detection.active_transform.rf import RFDetector
-from kbclean.detection.active_transform.lstm import LSTM2Detector
-from kbclean.detection.active_transform.transformer import RoBertaDetector
-from kbclean.detection.active_transform.cl import ClapDetector, ClapLSTMDetector
 import os
 import random
 import shutil
 import sys
 
 import click
-from kbclean.detection import AdhocDetector
-from kbclean.detection.active_transform import (DistanceDetector, HoloDetector,
-                                                LSTMDetector,
-                                                TransoformerDetector)
+from kbclean.detection.active_transform import HoloDetector, LSTMDetector
+from kbclean.detection.active_transform.random_forest import RandomForestDetector
 from kbclean.evaluation import Evaluator
 from kbclean.utils.inout import load_config
 from loguru import logger
@@ -33,15 +27,9 @@ config = {
 
 
 name2model = {
-    "adhoc": AdhocDetector,
-    "distance": DistanceDetector,
     "holo": HoloDetector,
     "lstm": LSTMDetector,
-    "lstm2": LSTM2Detector,
-    "transformer": TransoformerDetector,
-    "roberta": RoBertaDetector,
-    "rf": RFDetector,
-    "cl": ClapLSTMDetector
+    "random_forest": RandomForestDetector,
 }
 
 logger.configure(**config)
@@ -73,7 +61,9 @@ def cli():
 @click.option("--num_gpus", help="Number of GPUs used", default=1)
 @click.option("-k", help="Number of iterations", default=2)
 @click.option("-e", help="Number of examples per iteration", default=2)
-def evaluate(data_path, config_path, output_path, method, interactive, start, end, num_gpus, k, e):
+def evaluate(
+    data_path, config_path, output_path, method, interactive, start, end, num_gpus, k, e
+):
     evaluator = Evaluator()
 
     hparams = load_config(config_path)
@@ -83,7 +73,9 @@ def evaluate(data_path, config_path, output_path, method, interactive, start, en
     getattr(hparams, method).num_examples = e
 
     if interactive:
-        evaluator.ievaluate(detector, method, data_path, output_path, k, data_range=[start, end])
+        evaluator.ievaluate(
+            detector, method, data_path, output_path, step=k, data_range=[start, end]
+        )
     else:
         evaluator.evaluate(detector, method, data_path, output_path)
 

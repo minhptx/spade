@@ -1,71 +1,23 @@
-import itertools
 from functools import partial
-from typing import Counter, List
+from typing import List
 
-import numpy as np
 import pandas as pd
+from pytorch_lightning.core.lightning import LightningModule
 import torch
 import torch.nn.functional as F
-from kbclean.detection.base import ActiveDetector, BaseModule
-from kbclean.detection.extras.highway import Highway
+from kbclean.detection.addons.highway import Highway
+from kbclean.detection.base import ActiveDetector
+from kbclean.detection.features.holo import HoloFeatureExtractor
 from kbclean.transformation.noisy_channel import NCGenerator
-from kbclean.utils.data.helpers import (
-    split_train_test_dls,
-    str2regex,
-    unzip_and_stack_tensors,
-)
-from kbclean.utils.features.attribute import (
-    sym_trigrams,
-    sym_value_freq,
-    val_trigrams,
-    value_freq,
-    xngrams,
-)
-from loguru import logger
+from kbclean.utils.data.helpers import split_train_test_dls, unzip_and_stack_tensors
 from pytorch_lightning import Trainer
 from sklearn.preprocessing import MinMaxScaler
 from torch import nn, optim
 from torch.utils.data.dataset import TensorDataset
 from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
 from torchtext.data.utils import get_tokenizer
-from torchtext.experimental.vectors import FastText
+from torchtext.vocab import FastText
 
-
-class HoloFeatureExtractor:
-    def fit(self, values):
-        logger.debug("Values: " + str(values[:10]))
-        trigram = [["".join(x) for x in list(xngrams(val, 3))] for val in values]
-        ngrams = list(itertools.chain.from_iterable(trigram))
-        self.trigram_counter = Counter(ngrams)
-        sym_ngrams = [str2regex(x, False) for x in ngrams]
-
-        self.sym_trigram_counter = Counter(sym_ngrams)
-        self.val_counter = Counter(values)
-
-        sym_values = [str2regex(x, False) for x in values]
-        self.sym_val_counter = Counter(sym_values)
-
-        self.func2counter = {
-            val_trigrams: self.trigram_counter,
-            sym_trigrams: self.sym_trigram_counter,
-            value_freq: self.val_counter,
-            sym_value_freq: self.sym_val_counter,
-        }
-
-    def transform(self, values):
-        feature_lists = []
-        for func, counter in self.func2counter.items():
-            f = partial(func, counter=counter)
-            logger.debug(
-                "Negative: %s %s" % (func, list(zip(values[:10], f(values[:10]))))
-            )
-            logger.debug(
-                "Positive: %s %s" % (func, list(zip(values[-10:], f(values[-10:]))))
-            )
-            feature_lists.append(f(values))
-
-        feature_vecs = list(zip(*feature_lists))
-        return np.asarray(feature_vecs)
 
 
 class HoloLearnableModule(nn.Module):
@@ -84,7 +36,7 @@ class HoloLearnableModule(nn.Module):
         return self.linear(hw_out)
 
 
-class HoloModel(BaseModule):
+class HoloModel(LightningModule):
     def __init__(self, hparams):
         super().__init__()
 
@@ -143,7 +95,9 @@ class HoloDetector(ActiveDetector):
 
     def extract_features(self, data, labels=None):
         if labels:
-            features = self.scaler.fit_transform(self.feature_extractor.fit_transform(data))
+            features = self.scaler.fit_transform(
+                self.feature_extractor.fit_transform(data)
+            )
         else:
             features = self.scaler.transform(self.feature_extractor.transform(data))
 
@@ -176,18 +130,21 @@ class HoloDetector(ActiveDetector):
     def reset(self):
         self.model = HoloModel(self.hparams.model)
 
-    def idetect_values(
-        self, ec_str_pairs: str, values: List[str], recommender
-    ):
-        data, labels = self.generator.fit_transform(ec_str_pairs, values, recommender.most_positives())
+    def idetect_values(self, ec_str_pairs: str, values: List[str], recommender):
+        data, labels = self.generator.fit_transform(
+            ec_str_pairs, values, recommender.most_positives()
+        )
 
         feature_tensors_with_labels = self.extract_features(data, labels)
 
         dataset = TensorDataset(*feature_tensors_with_labels)
 
-
         train_dataloader, val_dataloader, _ = split_train_test_dls(
-            dataset, unzip_and_stack_tensors, self.hparams.model.batch_size, ratios=[0.7, 0.1], num_workers=1
+            dataset,
+            unzip_and_stack_tensors,
+            self.hparams.model.batch_size,
+            ratios=[0.7, 0.1],
+            num_workers=1,
         )
         if len(train_dataloader) > 0:
             self.model = HoloModel(self.hparams.model)
@@ -201,10 +158,8 @@ class HoloDetector(ActiveDetector):
                 max_epochs=self.hparams.model.num_epochs,
             )
             trainer.fit(
-                self.model,
-                train_dataloader=train_dataloader,
+                self.model, train_dataloader=train_dataloader,
             )
-
 
         feature_tensors = self.extract_features(values)
 
@@ -238,6 +193,10 @@ class HoloDetector(ActiveDetector):
             if column not in col2examples or not col2examples[column]:
                 result_df[column] = pd.Series([1.0 for _ in range(len(df))])
             else:
-                outliers = self.idetect_values([(x["raw"], x["cleaned"]) for x in col2examples[column]], values, recommender)
+                outliers = self.idetect_values(
+                    [(x["raw"], x["cleaned"]) for x in col2examples[column]],
+                    values,
+                    recommender,
+                )
                 result_df[column] = pd.Series(outliers)
         return result_df
