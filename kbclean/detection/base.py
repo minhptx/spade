@@ -38,11 +38,6 @@ class ActiveDetector(BaseDetector, metaclass=ABCMeta):
     def idetect(self, df: pd.DataFrame, col2examples: Dict[str, List[Tuple[str, str]]]):
         pass
 
-    @abstractmethod
-    def eval_idetect(self, raw_df: pd.DataFrame, cleaned_df: pd.DataFrame):
-        pass
-
-
 class Module(metaclass=ABCMeta):
     @abstractmethod
     def fit(self, train_path):

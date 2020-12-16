@@ -1,23 +1,24 @@
-from functools import partial
 from typing import List
 
+import numpy as np
 import pandas as pd
-from pytorch_lightning.core.lightning import LightningModule
 import torch
 import torch.nn.functional as F
+from kbclean.datasets.dataset import Dataset
 from kbclean.detection.addons.highway import Highway
 from kbclean.detection.base import ActiveDetector
-from kbclean.detection.features.holo import HoloFeatureExtractor
-from kbclean.transformation.noisy_channel import NCGenerator
+from kbclean.detection.features.holo import HoloFeaturizer
+from kbclean.transformation.noisy_channel import NegNCGenerator
 from kbclean.utils.data.helpers import split_train_test_dls, unzip_and_stack_tensors
+from loguru import logger
 from pytorch_lightning import Trainer
+from pytorch_lightning.core.lightning import LightningModule
 from sklearn.preprocessing import MinMaxScaler
 from torch import nn, optim
 from torch.utils.data.dataset import TensorDataset
 from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import FastText
-
 
 
 class HoloLearnableModule(nn.Module):
@@ -86,12 +87,12 @@ class HoloModel(LightningModule):
 class HoloDetector(ActiveDetector):
     def __init__(self, hparams):
         self.hparams = hparams
-        self.feature_extractor = HoloFeatureExtractor()
+        self.feature_extractor = HoloFeaturizer()
 
         self.tokenizer = get_tokenizer("spacy")
         self.fasttext = FastText()
         self.scaler = MinMaxScaler()
-        self.generator = NCGenerator()
+        self.generator = NegNCGenerator()
 
     def extract_features(self, data, labels=None):
         if labels:
@@ -168,35 +169,27 @@ class HoloDetector(ActiveDetector):
 
         return pred.squeeze(1).detach().cpu().numpy()
 
-    def eval_idetect(self, raw_df: pd.DataFrame, cleaned_df: pd.DataFrame, k):
-        result_df = raw_df.copy()
-        for column in raw_df.columns:
-            values = raw_df[column].values.tolist()
-            cleaned_values = cleaned_df[column].values.tolist()
-            false_values = []
+    def idetect(
+        self,
+        dataset: Dataset,
+        recommender,
+        score_df: pd.DataFrame,
+        label_df: pd.DataFrame,
+    ):
+        prediction_df = dataset.dirty_df.copy()
+        for col_i, column in enumerate(dataset.dirty_df.columns):
+            value_arr = label_df.iloc[:, col_i].values
+            neg_indices = np.where(value_arr == -1)
+            pos_indices = np.where(value_arr == 1)
 
-            for val, cleaned_val in zip(values, cleaned_values):
-                if val != cleaned_val:
-                    false_values.append((val, cleaned_val))
-
-            if not false_values:
-                result_df[column] = pd.Series([True for _ in range(len(raw_df))])
-            else:
-                outliers = self.idetect_values(false_values[:k], values)
-                result_df[column] = pd.Series(outliers)
-        return result_df
-
-    def idetect(self, df: pd.DataFrame, col2examples: dict, recommender):
-        result_df = df.copy()
-        for column in df.columns:
-            values = df[column].values.tolist()
-            if column not in col2examples or not col2examples[column]:
-                result_df[column] = pd.Series([1.0 for _ in range(len(df))])
-            else:
-                outliers = self.idetect_values(
-                    [(x["raw"], x["cleaned"]) for x in col2examples[column]],
-                    values,
-                    recommender,
+            if len(neg_indices) == 0:
+                logger.info(f"Skipping column {column}")
+                prediction_df[column] = pd.Series(
+                    [1.0 for _ in range(len(dataset.dirty_df))]
                 )
-                result_df[column] = pd.Series(outliers)
-        return result_df
+            else:
+                outliers = self.idetect_col(
+                    dataset, recommender, column, pos_indices, neg_indices
+                )
+                prediction_df[column] = pd.Series(outliers)
+        return prediction_df

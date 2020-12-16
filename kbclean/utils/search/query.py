@@ -28,16 +28,21 @@ class ESQuery:
     def get_char_ngram_counts(self, ngrams):
         if not ngrams:
             return [0]
-        query = "{}\n" + "\n{}\n".join(
-            [
-                json.dumps({"query": {"term": {"data": {"value": ngram}}}})
-                for ngram in ngrams
-            ]
-        )
-        return [
-            ESQuery.get_results(resp, "count", default_value=0)
-            for resp in self.es.msearch(query, index="char_ngram", request_timeout=60)["responses"]
-        ]
+
+        results = []
+        for i in range(0, len(ngrams), 10000):
+            sub_ngrams = ngrams[i: i + 10000]
+            query = "{}\n" + "\n{}\n".join(
+                [
+                    json.dumps({"query": {"term": {"data": {"value": ngram}}}})
+                    for ngram in sub_ngrams
+                ]
+            )
+            results.extend([
+                ESQuery.get_results(resp, "count", default_value=0)
+                for resp in self.es.msearch(query, index="char_ngram", request_timeout=60)["responses"]
+            ])
+        return results
 
     def get_tok_ngram_counts(self, ngrams):
         if not ngrams:

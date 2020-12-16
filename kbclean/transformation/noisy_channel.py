@@ -2,14 +2,15 @@ import itertools
 import random
 from collections import Counter
 from difflib import SequenceMatcher
-from operator import pos
-from typing import List, Tuple
+import time
 
 import numpy as np
 import regex as re
-from kbclean.utils.data.readers import RowBasedValue
-from kbclean.utils.features.attribute import xngrams
+from sklearn.naive_bayes import MultinomialNB
+from kbclean.utils.data.attribute import xngrams
 from loguru import logger
+from kbclean.datasets.dataset import Dataset
+import pandas as pd
 
 
 def wskeep_tokenize(s):
@@ -32,6 +33,7 @@ class CharTransform:
                     + self.after_str
                     + str_value[sample_position:]
                 )
+
         return str_value.replace(self.before_str, self.after_str)
 
     def __eq__(self, o: "CharTransform"):
@@ -108,7 +110,7 @@ class CharNoisyChannel:
             return 0
 
     def learn_transformation(self, error_str, cleaned_str):
-        if not cleaned_str or not error_str:
+        if not cleaned_str and not error_str:
             return []
 
         valid_trans = [CharTransform(cleaned_str, error_str)]
@@ -148,7 +150,6 @@ class CharNoisyChannel:
         for error_str, cleaned_str in string_pairs:
             transforms.extend(self.learn_transformation(error_str, cleaned_str))
 
-        # logger.debug("Transform rules: " + str(transforms))
         counter = Counter(transforms)
         sum_counter = sum(counter.values())
         self.rule2prob = {
@@ -170,6 +171,59 @@ class CharNoisyChannel:
             )
         )
         return list(set(list(one_grams.keys()) + list(two_ngrams.keys())))
+
+    def get_warning_substrs(self):
+        return [x.after_str for x in self.rule2prob.keys() if not x.before_str]
+
+    def _filter(self, dataset: Dataset, col, pos_indices, neg_indices):
+        def match_any(substrs, value):
+            for substr in substrs:
+                if substr in value:
+                    return True
+            return False
+
+        substrs = self.get_warning_substrs()
+        dataset.dirty_df["matched"] = dataset.dirty_df[col].apply(lambda x: match_any(substrs, x))
+
+        indices = dataset.dirty_df[dataset.dirty_df["matched"] == True].index.values.tolist()
+        
+        dataset.dirty_df.drop(["matched"], axis=1, inplace=True)
+
+        return indices
+
+
+    def transform(self, dataset, col, pos_indices, neg_indices):
+        new_dirty_df = pd.DataFrame(columns=dataset.dirty_df.columns, dtype=str)
+        new_clean_df = pd.DataFrame(columns=dataset.clean_df.columns, dtype=str)
+
+        indices = self._filter(dataset, col, pos_indices, neg_indices)
+
+        # filtered_dataset = dataset
+
+        pos_values = [dataset.dirty_df[col][index] for index in pos_indices] 
+
+        for index, row in dataset.dirty_df.iterrows():
+            count = 1
+            if index in neg_indices or index in indices:
+                   continue
+            
+            for rule, _ in self.rule2prob.items():
+                if rule.validate(row[col]):
+                    new_row = row.copy()
+                    result = rule.transform(row[col])
+                    if result not in pos_values:
+                        new_row[col] = result
+                        count += 1
+                        new_dirty_df = new_dirty_df.append(new_row, ignore_index=True)
+                        new_clean_df = new_clean_df.append(
+                            row, ignore_index=True
+                        )
+
+            new_dirty_df = new_dirty_df.append([row] * count, ignore_index=True)
+            new_clean_df = new_clean_df.append(
+                [row] * count, ignore_index=True
+            )
+        return Dataset(new_dirty_df.reset_index(drop=True).sort_index().sort_index(axis=1), new_clean_df.reset_index(drop=True).sort_index().sort_index(axis=1))
 
 
 class WordNoisyChannel(CharNoisyChannel):
@@ -219,7 +273,7 @@ class WordNoisyChannel(CharNoisyChannel):
         return list(set(valid_trans))
 
 
-class NCGenerator:
+class NegNCGenerator:
     def __init__(self, active_learner):
         self.word_channel = WordNoisyChannel()
         self.char_channel = CharNoisyChannel()
@@ -232,195 +286,52 @@ class NCGenerator:
                 return exception
         return False
 
-    def _get_suspicious_chars(self, channel):
-        for rule in channel.rule2prob.keys():
-            if not rule.before_str:
-                yield rule.after_str
-
-    def _generate_transformed_data(self, channel, row_values: List[str]):
-
-        examples = []
-        wait_time = 0
-
-        while len(examples) < len(row_values) and wait_time <= len(row_values):
-            row_value: RowBasedValue = random.choice(row_values)
-
-            probs = []
-            rules = []
-
-            for rule, prob in channel.rule2prob.items():
-                if rule.validate(row_value.value):
-                    rules.append(rule)
-                    probs.append(prob)
-
-            if probs:
-                rule = random.choices(rules, weights=probs, k=1)[0]
-                transformed_value = rule.transform(row_value.value)
-                examples.append(
-                    RowBasedValue(
-                        transformed_value, row_value.column_name, row_value.row_dict
-                    )
-                )
-            else:
-                wait_time += 1
-
-        return examples
-
-    def _filter_normal_values(
-        self,
-        channel: CharNoisyChannel,
-        row_values: List[RowBasedValue],
-        neg_row_values: List[RowBasedValue],
-    ):
-        suspicious_chars = self._get_suspicious_chars(channel)
-        neg_strings = [x.value for x in neg_row_values]
-        all_remove_values = []
-        for c in suspicious_chars:
-            removed_values = []
-            for row_value in row_values:
-                value = row_value.value
-                if c in value:
-                    removed_values.append(row_value)
-            if len(removed_values) < len(row_values) * 0.3:
-                all_remove_values.extend(removed_values)
-
-        for row_value in set(all_remove_values):
-            row_values.remove(row_value)
-
-        logger.debug("Remove_values", all_remove_values)
-        return [x for x in row_values if x.value not in neg_strings]
-
-    def fit_transform_channel(
-        self,
-        channel,
-        ec_pairs: List[Tuple[RowBasedValue, RowBasedValue]],
-        row_values,
-        scores,
-    ):
-        logger.debug(f"Pair examples: {ec_pairs}")
-
-        neg_value_pairs = [
-            (x[0].value, x[1].value) for x in ec_pairs if x[0].value != x[1].value
+    def fit_transform(self, dataset: Dataset, col: str, pos_indices, neg_indices):
+        ec_pairs = [
+            (dataset.dirty_df[col][i], dataset.clean_df[col][i]) for i in neg_indices
         ]
+        start_time = time.time()
+        self.char_channel.fit(ec_pairs)
+        dataset1 = self.char_channel.transform(dataset, col, pos_indices, neg_indices)
+        print(f"Char channel {time.time() - start_time}")
 
-        neg_row_values = [x[0] for x in ec_pairs if x[0].value != x[1].value]
-        pos_row_values = [x[0] for x in ec_pairs if x[0].value == x[1].value]
+        start_time = time.time()
+        self.word_channel.fit(ec_pairs)
+        dataset2 = self.word_channel.transform(dataset, col, pos_indices, neg_indices)
+        print(f"Word channel {time.time() - start_time}")
 
-        row_values = self.active_learner.most_positives(row_values, scores)
-
-        channel.fit(neg_value_pairs)
-
-        logger.debug("Rule Probabilities: " + str(channel.rule2prob))
-        neg_row_values = neg_row_values + self._generate_transformed_data(
-            channel, row_values
-        )
-
-        logger.debug("Values: " + str(set(row_values)))
-
-        pos_row_values = pos_row_values + self._filter_normal_values(
-            channel, row_values, neg_row_values
-        )
-
-        logger.debug(
-            f"{len(neg_row_values)} negative values: " + str(list(set(neg_row_values)))
-        )
-        logger.debug(
-            f"{len(pos_row_values)} positive values: " + str(list(set(pos_row_values)))
-        )
-
-        if len(pos_row_values) < 1000:
-            pos_row_values.extend(
-                random.choices(pos_row_values, k=1000 - len(pos_row_values))
-            )
-
-        if len(neg_row_values) < len(pos_row_values):
-            neg_row_values.extend(
-                random.choices(
-                    neg_row_values, k=len(pos_row_values) - len(neg_row_values)
-                )
-            )
-
-        data, labels = (
-            neg_row_values + pos_row_values,
-            [0 for _ in range(len(neg_row_values))]
-            + [1 for _ in range(len(pos_row_values))],
-        )
-
-        return data, labels
-
-    def fit_transform(self, ec_pairs: List[Tuple[str, str]], row_values, scores):
-        data1, labels1 = self.fit_transform_channel(
-            self.char_channel, ec_pairs, row_values, scores
-        )
-        data2, labels2 = self.fit_transform_channel(
-            self.word_channel, ec_pairs, row_values, scores
-        )
-        return data1 + data2, labels1 + labels2
+        return dataset1 + dataset2
 
 
-class SameNCGenerator(NCGenerator):
-    def fit_transform_channel(
-        self,
-        channel,
-        ec_pairs: List[Tuple[RowBasedValue, RowBasedValue]],
-        row_values,
-        scores,
-    ):
-        print(channel)
-        logger.debug(f"Pair examples: {ec_pairs}")
-
-        neg_row_values = [x[0] for x in ec_pairs if x[0].value != x[1].value]
-        pos_row_values = [x[0] for x in ec_pairs if x[0].value == x[1].value]
-
-        row_values = self.active_learner.most_positives(row_values, scores)
-
-        string_values = [x.value for x in row_values]
-        channel.fit(
-            list(
-                itertools.product(
-                    random.choices(string_values, k=200),
-                    random.choices(string_values, k=200),
-                )
+class PosNCGenerator(NegNCGenerator):
+    def fit_transform(self, dataset: Dataset, col: str, pos_indices, neg_indices):
+        values = dataset.dirty_df[col].values.tolist()
+        product_values = list(
+            itertools.product(
+                random.choices(values, k=100), random.choices(values, k=100),
             )
         )
 
-        logger.debug("Rule probabilities: " + str(channel.rule2prob))
+        self.char_channel.fit(product_values)
 
-        neg_row_values = neg_row_values + self._generate_transformed_data(
-            channel, neg_row_values
-        )
+        dataset1 = self.char_channel.transform(dataset, col, pos_indices, neg_indices)
 
-        logger.debug("Values: " + str(set(row_values)))
-
-        neg_strings = [x.value for x in neg_row_values]
-
-        logger.debug(
-            f"{len(neg_row_values)} negative values: "
-            + str(list(set(neg_row_values))[:20])
-        )
-        logger.debug(
-            f"{len(pos_row_values)} positive values: "
-            + str(list(set(pos_row_values))[:20])
-        )
-
-        if len(neg_row_values) < len(pos_row_values):
-            neg_row_values.extend(
-                random.choices(
-                    neg_row_values, k=len(pos_row_values) - len(neg_row_values)
-                )
-            )
-
-        data, labels = (neg_row_values, [0 for _ in range(len(neg_row_values))])
-
-        return data, labels
+        self.word_channel.fit(product_values)
+        dataset2 = self.word_channel.transform(dataset, col, pos_indices, neg_indices)
+        return dataset1 + dataset2
 
 
-class CombinedNCGenerator(NCGenerator):
+class CombinedNCGenerator(NegNCGenerator):
     def __init__(self, active_learner):
-        self.op_generator = NCGenerator(active_learner)
-        self.same_generator = SameNCGenerator(active_learner)
+        self.neg_generator = NegNCGenerator(active_learner)
+        self.pos_generator = PosNCGenerator(active_learner)
 
-    def fit_transform(self, ec_pairs: List[Tuple[str, str]], row_values, scores):
-        data1, labels1 = self.op_generator.fit_transform(ec_pairs, row_values, scores)
-        data2, labels2 = self.same_generator.fit_transform(ec_pairs, row_values, scores)
-        return data1 + data2, labels1 + labels2
+    def fit_transform(self, dataset: Dataset, col: str, pos_indices, neg_indices):
+        dataset1 = self.neg_generator.fit_transform(
+            dataset, col, pos_indices, neg_indices
+        )
+
+        # dataset2 = self.pos_generator.fit_transform(
+        #     dataset, col, pos_indices, neg_indices
+        # )
+        return dataset1

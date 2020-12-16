@@ -19,6 +19,9 @@ tt_logs/
 data/
 debug/
 output/
+logs/
+psl/
+
 
 *.model
 *.ckpt

@@ -1,42 +1,86 @@
 import abc
 from abc import abstractmethod
 import itertools
+
+import torch
 from typing import List
-from kbclean.utils.data.readers import RowBasedValue
+import numpy as np
+import pandas as pd
 
 
-class BaseExtractor(metaclass=abc.ABCMeta):
+class BaseFeaturizer(metaclass=abc.ABCMeta):
     @abstractmethod
-    def fit(self, values: List[RowBasedValue]):
+    def fit(self, dirty_df: pd.DataFrame, col: str):
         pass
 
     @abstractmethod
-    def transform(self, values: List[RowBasedValue]):
+    def transform(self, dirty_df: pd.DataFrame, col: str):
         pass
 
-    def fit_transform(self, values: List[RowBasedValue]):
-        self.fit(values)
+    def fit_transform(self, dirty_df: pd.DataFrame, col: str):
+        self.fit(dirty_df, col)
 
-        return self.transform(values)
+        return self.transform(dirty_df, col)
 
     @abstractmethod
-    def n_features(self):
+    def n_features(self, dirty_df: pd.DataFrame):
         pass
 
+    @abstractmethod
+    def feature_dim(self):
+        return 1
 
-class ConcatExtractor(BaseExtractor):
+
+class UnionFeaturizer(BaseFeaturizer):
     def __init__(self, name2extractor):
         self.name2extractor = name2extractor
 
-    def fit(self, values: List[RowBasedValue]):
+    def fit(self, dirty_df: pd.DataFrame, col: str):
         for extractor in self.name2extractor.values():
-            extractor.fit(values)
+            extractor.fit(dirty_df, col)
 
-    def transform(self, values: List[RowBasedValue]):
-        return list(itertools.chain.from_iterable([extractor.transform(values) for extractor in self.name2extractor.values()]))
+    def transform(self, dirty_df: pd.DataFrame, col: str):
+        return list(
+            itertools.chain.from_iterable(
+                [
+                    extractor.transform(dirty_df, col)
+                    for extractor in self.name2extractor.values()
+                ]
+            )
+        )
 
     def __getitem__(self, key):
         return self.name2extractor[key]
 
-    def n_features(self):
-        return sum([x.n_features() for x in self.name2extractor.values()])
+    def n_features(self, dirty_df: pd.DataFrame):
+        return sum([x.n_features(dirty_df) for x in self.name2extractor.values()])
+
+    def feature_dim(self):
+        return list(self.name2extractor.values())[0].feature_dim()
+
+
+class ConcatFeaturizer(UnionFeaturizer):
+    def __init__(self, name2extractor):
+        self.name2extractor = name2extractor
+
+    def transform(self, dirty_df: pd.DataFrame, col: str):
+        return torch.cat(
+            list(
+                itertools.chain.from_iterable(
+                    [
+                        extractor.transform(dirty_df, col)
+                        for extractor in self.name2extractor.values()
+                    ]
+                )
+            ),
+            axis=1,
+        )
+
+    def __getitem__(self, key):
+        return self.name2extractor[key]
+
+    def n_features(self, dirty_df: pd.DataFrame):
+        return sum([x.n_features(dirty_df) for x in self.name2extractor.values()])
+
+    def feature_dim(self):
+        return list(self.name2extractor.values())[0].feature_dim()

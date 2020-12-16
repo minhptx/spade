@@ -2,8 +2,36 @@ import io
 
 from argparse import Namespace
 from pathlib import Path
+from spellchecker.spellchecker import SpellChecker
+from torchtext.vocab import FastText
+from torchtext.data.utils import get_tokenizer
+
 
 import yaml
+
+class FastTextLoader:
+    instance = None
+    tokenizer = None
+    spell_checker = None
+
+    @staticmethod
+    def get_instance():
+        if FastTextLoader.instance is None:
+            FastTextLoader.instance = FastText()
+        return FastTextLoader.instance
+
+    @staticmethod
+    def get_tokenizer():
+        if FastTextLoader.tokenizer is None:
+            FastTextLoader.tokenizer = get_tokenizer("spacy")
+        return FastTextLoader.tokenizer
+
+    @staticmethod
+    def get_spell_checker():
+        if FastTextLoader.spell_checker is None:
+            FastTextLoader.spell_checker = SpellChecker()
+        return FastTextLoader.spell_checker
+
 
 
 def load_config(config_path):

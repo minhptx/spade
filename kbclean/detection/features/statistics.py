@@ -1,72 +1,69 @@
-from typing import List
-from kbclean.utils.data.readers import RowBasedValue
+from typing import Counter
 import numpy as np
 import torch
-from kbclean.detection.features.base import BaseExtractor
+from kbclean.datasets.dataset import Dataset
+from kbclean.detection.features.base import BaseFeaturizer
 from kbclean.utils.data.helpers import str2regex
 from sklearn.feature_extraction.text import CountVectorizer
+import pandas as pd
+from ftfy import fix_text
 
 
-
-class StatsExtractor(BaseExtractor):
+class StatsFeaturizer(BaseFeaturizer):
     def __init__(self):
-        self.char_counter = CountVectorizer(analyzer="char", lowercase=False)
-        self.word_counter = CountVectorizer(lowercase=False)
-        self.regex_counter = CountVectorizer(analyzer="char", lowercase=False)
-
-        self.name2covalue_counter = {}
-
-    def fit(self, values: List[RowBasedValue]):
-        self.char_counter.fit([val.value for val in values])
-        self.word_counter.fit([val.value for val in values])
-        self.regex_counter.fit(
-            [str2regex(val.value, match_whole_token=False) for val in values]
+        self.char_counter = CountVectorizer(
+            tokenizer=lambda x: list(x), lowercase=False, binary=True
+        )
+        self.regex_counter = CountVectorizer(
+            tokenizer=lambda x: list(x), lowercase=False, binary=True
+        )
+        self.regex_counter2 = CountVectorizer(
+            tokenizer=lambda x: list(x), lowercase=False, binary=True
         )
 
-        for name in values[0].row_dict.keys():
-            if name == values[0].column_name:
-                continue 
-            covalue_list = []
-            for value in values:
-                covalue_list.append(f"{value}||{name}||{value.row_dict[name]}")
-            self.name2covalue_counter[name] = CountVectorizer(
-                analyzer=lambda x: [x]
-            ).fit(covalue_list)
+        self.covalue_counter = {}
+        self.value_counter = {}
 
-    def transform(self, values):
+    def fit(self, dirty_df: pd.DataFrame, col: str):
+        self.char_counter.fit(dirty_df[col].values.tolist())
+        self.regex_counter.fit(
+            [str2regex(val, match_whole_token=False) for val in dirty_df[col].values]
+        )
+        self.regex_counter2.fit(
+            [str2regex(val, match_whole_token=True) for val in dirty_df[col].values]
+        )
+
+        self.value_counter = dict(Counter(dirty_df[col].values))
+
+    def transform(self, dirty_df: pd.DataFrame, col: str):
         char_features = self.char_counter.transform(
-            [val.value for val in values]
+            dirty_df[col].values.tolist()
         ).todense()
-        word_features = self.word_counter.transform(
-            [val.value for val in values]
-        ).todense()
+        # word_features = self.word_counter.transform(
+        #     dataset.dirty_df[col].values.tolist()
+        # ).todense()
         regex_features = self.regex_counter.transform(
-            [str2regex(val.value, match_whole_token=False) for val in values]
+            [str2regex(val, match_whole_token=False) for val in dirty_df[col].values]
         ).todense()
 
-        co_feature_lists = []
-        for name in values[0].row_dict.keys():
-            if name == values[0].column_name:
-                continue
-            covalue_list = []
-            for value in values:
-                covalue_list.append(f"{value}||{name}||{value.row_dict[name]}")
-            co_feature_lists.append(
-                self.name2covalue_counter[name].transform(covalue_list)
-            )
+        regex_features2 = self.regex_counter2.transform(
+            [str2regex(val, match_whole_token=False) for val in dirty_df[col].values]
+        ).todense()
 
-        return [torch.tensor(
-            np.concatenate(
-                [char_features, regex_features],
-                axis=1,
+        return [
+            torch.tensor(
+                np.concatenate([char_features, regex_features, regex_features2], axis=1)
             )
-        )]
+        ]
 
-    def n_features(self):
+    def n_features(self, dirty_df: pd.DataFrame):
         return sum(
             [
                 len(x.get_feature_names())
-                for x in [self.char_counter, self.regex_counter]
+                for x in [self.char_counter, self.regex_counter, self.regex_counter2]
             ]
         )
+
+    def feature_dim(self):
+        return 1
 

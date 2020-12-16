@@ -1,5 +1,6 @@
 import csv
 from pathlib import Path
+from loguru import logger
 
 import pandas as pd
 from torch.nn.functional import threshold
@@ -8,12 +9,16 @@ from sklearn.metrics import classification_report, confusion_matrix
 import numpy as np
 
 class Report:
-    def __init__(self, prob_df, raw_df, cleaned_df, groundtruth_df, threshold=0.5):
+    def __init__(self, prob_df, dataset, threshold=0.5):
         self.threshold = threshold
         detected_df = prob_df.applymap(lambda x: x >= self.threshold)
 
         flat_result = detected_df.stack().values.tolist()
-        ground_truth = groundtruth_df.stack().values.tolist()
+        ground_truth = dataset.groundtruth_df.stack().values.tolist()
+
+        for col in dataset.groundtruth_df.columns:
+            logger.info(f"Column {col} classification report:")
+            logger.info(classification_report(dataset.groundtruth_df[col].values, detected_df[col].values))
 
         self.report = pd.DataFrame(
             classification_report(ground_truth, flat_result, output_dict=True)
@@ -25,26 +30,26 @@ class Report:
         )
 
         self.debug, self.scores = self.debug(
-            raw_df, cleaned_df, groundtruth_df, detected_df, prob_df
+            dataset, detected_df, prob_df
         )
 
-    def debug(self, raw_df, cleaned_df, groundtruth_df, result_df, prob_df):
+    def debug(self, dataset, result_df, prob_df):
         def get_prob(x):
             return prob_df.loc[x["id"], x["col"]]
 
-        
-
+    
         debug_df = pd.DataFrame()
-        score_sr = raw_df.stack()
+        score_sr = dataset.dirty_df.stack()
         debug_df["from"] = score_sr.values.tolist()
-        debug_df["to"] = cleaned_df.stack().values.tolist()
+        debug_df["to"] = dataset.clean_df.stack().values.tolist()
         debug_df.index = score_sr.index
         debug_df.index.names = ["id", "col"]
 
         debug_df["id"] = debug_df.index.get_level_values("id")
         debug_df["col"] = debug_df.index.get_level_values("col")
         debug_df["score"] = prob_df.stack().values.tolist()
-        debug_df["result"] = groundtruth_df.stack().values.tolist()
+        debug_df["result"] = dataset.groundtruth_df.stack().values.tolist()
+        debug_df["compare"] = debug_df["from"] == debug_df["to"]
         return debug_df, prob_df
 
     def serialize(self, output_path):

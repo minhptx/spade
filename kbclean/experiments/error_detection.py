@@ -1,3 +1,5 @@
+from pathlib import Path
+from kbclean.detection.active_transform.random_forest import RFDetector
 import os
 import random
 import shutil
@@ -5,7 +7,6 @@ import sys
 
 import click
 from kbclean.detection.active_transform import HoloDetector, LSTMDetector
-from kbclean.detection.active_transform.random_forest import RandomForestDetector
 from kbclean.evaluation import Evaluator
 from kbclean.utils.inout import load_config
 from loguru import logger
@@ -29,7 +30,7 @@ config = {
 name2model = {
     "holo": HoloDetector,
     "lstm": LSTMDetector,
-    "random_forest": RandomForestDetector,
+    "random_forest": RFDetector
 }
 
 logger.configure(**config)
@@ -56,25 +57,29 @@ def cli():
     "--method", "-m", help="Method for outlier detection", default="deep_clean"
 )
 @click.option("--interactive", "-i", is_flag=True, help="Interactive detection")
-@click.option("--start", help="Start range", default=0, type=int)
-@click.option("--end", help="End range", default=None, type=int)
 @click.option("--num_gpus", help="Number of GPUs used", default=1)
 @click.option("-k", help="Number of iterations", default=2)
 @click.option("-e", help="Number of examples per iteration", default=2)
 def evaluate(
-    data_path, config_path, output_path, method, interactive, start, end, num_gpus, k, e
+    data_path, config_path, output_path, method, interactive, num_gpus, k, e
 ):
+
     evaluator = Evaluator()
+
+    debug_dir = f"debug/{Path(data_path).name}"
 
     hparams = load_config(config_path)
 
     detector = name2model[method](getattr(hparams, method))
     getattr(hparams, method).num_gpus = num_gpus
     getattr(hparams, method).num_examples = e
+    getattr(hparams, method).debug_dir = debug_dir
+
+    Path(debug_dir).mkdir(parents=True, exist_ok=True)
 
     if interactive:
         evaluator.ievaluate(
-            detector, method, data_path, output_path, step=k, data_range=[start, end]
+            detector, method, data_path, output_path, k=k, e=e
         )
     else:
         evaluator.evaluate(detector, method, data_path, output_path)
@@ -83,6 +88,7 @@ def evaluate(
 @cli.command()
 def clear():
     shutil.rmtree("output", ignore_errors=True)
+    shutil.rmtree("debug", ignore_errors=True)
     os.remove("info.log")
     os.remove("error.log")
     os.remove("debug.log")

@@ -1,10 +1,12 @@
 import itertools
 from functools import partial
+from kbclean.datasets.dataset import Dataset
+from kbclean.detection.features.base import BaseFeaturizer
 from typing import Counter
 
 import numpy as np
 from kbclean.utils.data.helpers import str2regex
-from kbclean.utils.features.attribute import (
+from kbclean.utils.data.attribute import (
     sym_trigrams,
     sym_value_freq,
     val_trigrams,
@@ -14,9 +16,8 @@ from kbclean.utils.features.attribute import (
 from loguru import logger
 
 
-class HoloFeatureExtractor:
+class HoloFeaturizer(BaseFeaturizer):
     def fit(self, values):
-        logger.debug("Values: " + str(values[:10]))
         trigram = [["".join(x) for x in list(xngrams(val, 3))] for val in values]
         ngrams = list(itertools.chain.from_iterable(trigram))
         self.trigram_counter = Counter(ngrams)
@@ -49,3 +50,6 @@ class HoloFeatureExtractor:
 
         feature_vecs = list(zip(*feature_lists))
         return np.asarray(feature_vecs)
+
+
+
