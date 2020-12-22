@@ -11,6 +11,15 @@ from kbclean.evaluation import Evaluator
 from kbclean.utils.inout import load_config
 from loguru import logger
 
+import neptune
+
+neptune.init(
+    project_qualified_name="clapika/act",
+    api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiYzYwZWY5ZjYtOTAxOS00MzhlLTlmY2EtZjRiMDkxNDhiYjQ3In0=",
+)
+
+# Create experiment
+
 config = {
     "handlers": [
         {"sink": sys.stdout, "format": "{time} - {message}", "level": "INFO"},
@@ -27,11 +36,7 @@ config = {
 }
 
 
-name2model = {
-    "holo": HoloDetector,
-    "lstm": LSTMDetector,
-    "random_forest": RFDetector
-}
+name2model = {"holo": HoloDetector, "lstm": LSTMDetector, "random_forest": RFDetector}
 
 logger.configure(**config)
 
@@ -60,9 +65,7 @@ def cli():
 @click.option("--num_gpus", help="Number of GPUs used", default=1)
 @click.option("-k", help="Number of iterations", default=2)
 @click.option("-e", help="Number of examples per iteration", default=2)
-def evaluate(
-    data_path, config_path, output_path, method, interactive, num_gpus, k, e
-):
+def evaluate(data_path, config_path, output_path, method, interactive, num_gpus, k, e):
 
     evaluator = Evaluator()
 
@@ -74,13 +77,14 @@ def evaluate(
     getattr(hparams, method).num_gpus = num_gpus
     getattr(hparams, method).num_examples = e
     getattr(hparams, method).debug_dir = debug_dir
+    
 
     Path(debug_dir).mkdir(parents=True, exist_ok=True)
+    neptune.create_experiment(Path(data_path).name, params=vars(getattr(hparams, method).model), tags=[method], upload_source_files=['*.py'])
+
 
     if interactive:
-        evaluator.ievaluate(
-            detector, method, data_path, output_path, k=k, e=e
-        )
+        evaluator.ievaluate(detector, method, data_path, output_path, k=k, num_examples=e)
     else:
         evaluator.evaluate(detector, method, data_path, output_path)
 

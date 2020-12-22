@@ -54,7 +54,6 @@ class LSTMModel(LightningModule):
             nn.Linear(self.hparams.reduce_dim * len(self.hparams.feature_dims), 1,),
         )
 
-
     def forward(self, char_inputs, word_inputs, statistics):
         concat_inputs = []
 
@@ -68,13 +67,13 @@ class LSTMModel(LightningModule):
     def training_step(self, batch, batch_idx):
         (char_inputs, word_inputs, features, labels) = batch
         labels = labels.view(-1, 1)
-        weights = torch.zeros_like(labels).type_as(labels)
+        weights = torch.zeros_like(labels).type_as(labels).float()
         weights[labels <= 0.5] = (labels >= 0.5).sum().float() / labels.shape[0]
         weights[labels >= 0.5] = (labels <= 0.5).sum().float() / labels.shape[0]
 
         probs = self.forward(char_inputs, word_inputs, features)
 
-        loss = F.binary_cross_entropy(probs, labels.float(), weights)
+        loss = F.binary_cross_entropy(probs, labels.float())
         preds = probs >= 0.5
         acc = (labels.long() == preds).sum().float() / labels.shape[0]
 
@@ -86,13 +85,13 @@ class LSTMModel(LightningModule):
     def validation_step(self, batch, batch_idx):
         (char_inputs, word_inputs, features, labels) = batch
         labels = labels.view(-1, 1)
-        weights = torch.zeros_like(labels).type_as(labels)
+        weights = torch.zeros_like(labels).type_as(labels).float()
         weights[labels <= 0.5] = (labels >= 0.5).sum().float() / labels.shape[0]
         weights[labels >= 0.5] = (labels <= 0.5).sum().float() / labels.shape[0]
 
         probs = self.forward(char_inputs, word_inputs, features)
 
-        loss = F.binary_cross_entropy(probs, labels.float(), weights)
+        loss = F.binary_cross_entropy(probs, labels.float())
         preds = probs >= 0.5
         acc = (labels.long() == preds).sum().float() / labels.shape[0]
 
@@ -106,7 +105,6 @@ class LSTMModel(LightningModule):
 class LSTMDataModule(LightningDataModule):
     def __init__(self,):
         super().__init__()
-
 
     def prepare_data(self):
         pass
@@ -133,7 +131,10 @@ class LSTMDetector(HoloDetector):
 
         if self.training:
             labels = label_df[col]
-            return features + [torch.tensor(labels.values.tolist())]
+            return (
+                features
+                + [torch.tensor(labels.values.tolist())]
+            )
         return features
 
     def reset(self):
@@ -142,14 +143,14 @@ class LSTMDetector(HoloDetector):
         except:
             pass
 
-    def idetect_col(self, dirty_df, label_df, col, pos_indices, neg_indices, pairs):
+    def idetect_col(self, dataset, col, pos_indices, neg_indices):
         generator = ErrorGenerator()
         start_time = time.time()
         self.training = True
 
         logger.info("Transforming data ....")
         train_dirty_df, train_label_df, rules = generator.fit_transform(
-            dirty_df, label_df, col, pos_indices, neg_indices, pairs
+            dataset, col, pos_indices, neg_indices
         )
 
         output_pd = train_dirty_df[[col]].copy()
@@ -200,7 +201,7 @@ class LSTMDetector(HoloDetector):
 
         self.model.eval()
         self.training = False
-        feature_tensors = self.extract_features(dirty_df, label_df, col)
+        feature_tensors = self.extract_features(dataset.dirty_df, None, col)
 
         pred = self.model.forward(*feature_tensors)
 
@@ -209,48 +210,34 @@ class LSTMDetector(HoloDetector):
 
         return result
 
-    def idetect(
-        self, dirty_df: pd.DataFrame, label_df: pd.DataFrame, col2pairs,
-    ):
-        prediction_df = dirty_df.copy()
-
-
-        for col_i, col in enumerate(dirty_df.columns):
-            value_arr = label_df.iloc[:, col_i].values
+    def idetect(self, dataset: pd.DataFrame):
+        for col_i, col in enumerate(dataset.dirty_df.columns):
+            value_arr = dataset.label_df.iloc[:, col_i].values
             neg_indices = np.where(np.logical_and(0 <= value_arr, value_arr <= 0.5))[
                 0
             ].tolist()
             pos_indices = np.where(value_arr >= 0.5)[0].tolist()
-            examples = [dirty_df[col][i] for i in neg_indices + pos_indices]
+            examples = [dataset.dirty_df[col][i] for i in neg_indices + pos_indices]
 
             logger.info(
                 f"Column {col} has {len(neg_indices)} negatives and {len(pos_indices)} positives"
             )
 
             if len(neg_indices) == 0:
-                logger.info(
-                    f"Skipping column {col} with {len(examples)} examples {list(set(examples))[:20]}"
+                dataset.prediction_df[col] = pd.Series(
+                    [1.0 for _ in range(len(dataset.dirty_df))]
                 )
-                prediction_df[col] = pd.Series([1.0 for _ in range(len(dirty_df))])
             else:
                 logger.info(f"Detecting column {col} with {len(examples)} examples")
 
-                pd.DataFrame(col2pairs[col]).to_csv(f"{self.hparams.debug_dir}/{col}_chosen.csv")
-
-                logger.debug(
-                    f"{len(dirty_df[label_df[col] >= 0.5])} Positive values: {dirty_df[label_df[col] >= 0.5][col].values.tolist()[:20]}"
-                )
-                logger.debug(
-                    f"{len(dirty_df[label_df[col] <= 0.5])} Negative values: {dirty_df[label_df[col] <= 0.5][col].values.tolist()[:20]}"
-                )
-                outliers = self.idetect_col(
-                    dirty_df, label_df, col, pos_indices, neg_indices, col2pairs[col],
+                pd.DataFrame(dataset.col2labeled_pairs[col]).to_csv(
+                    f"{self.hparams.debug_dir}/{col}_chosen.csv"
                 )
 
-                df = pd.DataFrame(dirty_df[col].values)
+                outliers = self.idetect_col(dataset, col, pos_indices, neg_indices)
+
+                df = pd.DataFrame(dataset.dirty_df[col].values)
                 df["result"] = outliers
-                df["training_label"] = label_df[col].values.tolist()
+                df["training_label"] = dataset.label_df[col].values.tolist()
                 df.to_csv(f"{self.hparams.debug_dir}/{col}_prediction.csv", index=None)
-                prediction_df[col] = pd.Series(outliers)
-
-        return prediction_df
+                dataset.prediction_df[col] = pd.Series(outliers)

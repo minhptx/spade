@@ -1,9 +1,11 @@
 import itertools
 from functools import lru_cache
+from kbclean.utils.search.query import ESQuery
 
 import nltk
 import numpy as np
 import pandas as pd
+import swifter
 from kbclean.recommendation.checker.base import ErrorChecker
 from kbclean.utils.data.attribute import xngrams
 from kbclean.utils.inout import FastTextLoader
@@ -13,7 +15,7 @@ from torchtext.data.utils import get_tokenizer
 
 @lru_cache()
 def min_tok_ngram_counts(es_query, values):
-    token_lists = list(
+    token_lists = set(
         itertools.chain.from_iterable(
             [nltk.wordpunct_tokenize(value) for value in values]
         )
@@ -59,117 +61,27 @@ def min_char_ngram_counts(es_query, values):
 
 class DictTypoChecker(ErrorChecker):
     def __init__(self):
-        self.model = SpellChecker()
+        self.model = FastTextLoader.get_spell_checker()
         self.value2count = {}
 
     def fit(self, dirty_df: pd.DataFrame, col):
-        col_values = dirty_df[col].values.tolist()
-
         self.value2count = dict(
-            col_values,
-            zip(
-                list(
-                    map(
-                        lambda x: len(
-                            self.model.unknown(
-                                [tok for tok in nltk.wordpunct_tokenize(x)]
-                            )
-                        )
-                        == 0,
-                        col_values,
-                    )
+            dirty_df[col]
+            .swifter.apply(
+                lambda x: (
+                    x,
+                    len(self.model.unknown([tok for tok in nltk.wordpunct_tokenize(x)]))
+                    == 0,
                 )
-            ),
+            )
+            .values
         )
 
     def transform(self, dirty_df: pd.DataFrame, col):
-        return np.asarray([self.value2count[value] for value in dirty_df[col].values])
+        return dirty_df[col].swifter.apply(lambda x: self.value2count[x]).values
 
 
 class FastTextChecker(ErrorChecker):
-    def __init__(self):
-        self.tokenizer = get_tokenizer("spacy")
-        self.fasttext = FastTextLoader.get_instance()
-        self.value2count = {}
-
-    @lru_cache()
-    def _count_nonmeaning(self, str_value):
-        try:
-            result = np.count_nonzero(
-                [
-                    (x.sum() == 0)
-                    for x in self.fasttext.get_vecs_by_tokens(
-                        self.tokenizer(str_value), lower_case_backup=True
-                    )
-                ]
-            )
-
-            return result
-        except Exception as e:
-            print(e)
-            return 0
-
-    def fit(self, dirty_df: pd.DataFrame, col):
-        col_values = dirty_df[col].values.tolist()
-        counts = [self._count_nonmeaning(str_value) for str_value in col_values]
-
-        self.value2count = dict(zip(col_values, counts))
-
-    def transform(self, dirty_df: pd.DataFrame, col, threshold):
-        return np.asarray(
-            [self.value2count[value] <= 0 for value in dirty_df[col].values.tolist()]
-        )
-
-
-class DictTypoTHChecker(ErrorChecker):
-    def __init__(self):
-        self.model = SpellChecker()
-        self.value2count = {}
-
-    def fit(self, dirty_df: pd.DataFrame, col):
-        col_values = dirty_df[col].values.tolist()
-
-        self.value2count = dict(
-            col_values,
-            zip(
-                list(
-                    map(
-                        lambda x: len(
-                            self.model.unknown(
-                                [tok for tok in nltk.wordpunct_tokenize(x)]
-                            )
-                        )
-                        == 0,
-                        col_values,
-                    )
-                )
-            ),
-        )
-
-    def transform(self, dirty_df: pd.DataFrame, col, threshold):
-        return np.asarray(
-            [self.value2count[value] > threshold for value in dirty_df[col].values]
-        )
-
-
-class WebTableChecker(ErrorChecker):
-    def __init__(self, es_query):
-        self.model = SpellChecker()
-        self.es_query = es_query
-
-    def fit(self, dirty_df: pd.DataFrame, col):
-        col_values = dirty_df[col].values.tolist()
-        counts = min_char_ngram_counts(self.es_query, tuple(col_values))
-
-        self.value2count = dict(zip(col_values, counts))
-
-    def transform(self, dirty_df: pd.DataFrame, col, threshold):
-        return np.asarray(
-            [self.value2count[value] > 1000 for value in dirty_df[col].values.tolist()]
-        )
-
-
-class FastTextTHChecker(ErrorChecker):
     def __init__(self):
         self.tokenizer = FastTextLoader.get_tokenizer()
         self.fasttext = FastTextLoader.get_instance()
@@ -193,23 +105,18 @@ class FastTextTHChecker(ErrorChecker):
             return 0
 
     def fit(self, dirty_df: pd.DataFrame, col):
-        col_values = dirty_df[col].values.tolist()
-        counts = [self._count_nonmeaning(str_value) for str_value in col_values]
-
-        self.value2count = dict(zip(col_values, counts))
-
-    def transform(self, dirty_df: pd.DataFrame, col, threshold):
-        return np.asarray(
-            [
-                self.value2count[value] <= threshold
-                for value in dirty_df[col].values.tolist()
-            ]
+        self.value2count = dict(
+            dirty_df[col]
+            .swifter.apply(lambda x: (x, self._count_nonmeaning(x) == 0))
+            .values
         )
 
+    def transform(self, dirty_df: pd.DataFrame, col):
+        return dirty_df[col].swifter.apply(lambda x: self.value2count[x]).values
 
-class WebTableTHChecker(ErrorChecker):
+
+class WebTableBoolChecker(ErrorChecker):
     def __init__(self, es_query):
-        self.model = FastTextLoader.get_spell_checker()
         self.es_query = es_query
 
     def fit(self, dirty_df: pd.DataFrame, col):
@@ -218,11 +125,27 @@ class WebTableTHChecker(ErrorChecker):
 
         self.value2count = dict(zip(col_values, counts))
 
-    def transform(self, dirty_df: pd.DataFrame, col, threshold):
-        return np.asarray(
-            [
-                self.value2count[value] >= threshold
-                for value in dirty_df[col].values.tolist()
-            ]
+    def transform(self, dirty_df: pd.DataFrame, col):
+        return (
+            dirty_df[col]
+            .swifter.apply(
+                lambda x: self.value2count[x] / 10000
+                if self.value2count[x] < 10000
+                else 1
+            )
+            .values
         )
 
+
+class WebTableChecker(ErrorChecker):
+    def __init__(self, es_query):
+        self.es_query = es_query
+
+    def fit(self, dirty_df: pd.DataFrame, col):
+        col_values = dirty_df[col].values.tolist()
+        counts = min_char_ngram_counts(self.es_query, tuple(col_values))
+
+        self.value2count = dict(zip(col_values, counts))
+
+    def transform(self, dirty_df: pd.DataFrame, col):
+        return dirty_df[col].swifter.apply(lambda x: self.value2count[x]).values

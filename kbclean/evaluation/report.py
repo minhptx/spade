@@ -3,18 +3,18 @@ from pathlib import Path
 from loguru import logger
 
 import pandas as pd
-from torch.nn.functional import threshold
-from kbclean.utils.data.helpers import diff_dfs, not_equal
 from sklearn.metrics import classification_report, confusion_matrix
 import numpy as np
+from neptunecontrib.monitoring.metrics import log_classification_report
+
 
 class Report:
-    def __init__(self, prob_df, dataset, threshold=0.5):
+    def __init__(self, dataset, threshold=0.5):
         self.threshold = threshold
-        detected_df = prob_df.applymap(lambda x: x >= self.threshold)
+        detected_df = dataset.prediction_df.applymap(lambda x: x >= self.threshold)
 
-        flat_result = detected_df.stack().values.tolist()
-        ground_truth = dataset.groundtruth_df.stack().values.tolist()
+        flat_result = detected_df.stack().values
+        ground_truth = dataset.groundtruth_df.stack().values
 
         for col in dataset.groundtruth_df.columns:
             logger.info(f"Column {col} classification report:")
@@ -24,18 +24,21 @@ class Report:
             classification_report(ground_truth, flat_result, output_dict=True)
         ).transpose()
 
+        log_classification_report(ground_truth, flat_result)
+
+
         self.matrix = pd.DataFrame(
             confusion_matrix(ground_truth, flat_result, labels=[True, False]),
             columns=["True", "False"],
         )
 
-        self.debug, self.scores = self.debug(
-            dataset, detected_df, prob_df
+        self.debug = self.debug(
+            dataset, detected_df
         )
 
-    def debug(self, dataset, result_df, prob_df):
+    def debug(self, dataset, result_df):
         def get_prob(x):
-            return prob_df.loc[x["id"], x["col"]]
+            return dataset.prediction_df.loc[x["id"], x["col"]]
 
     
         debug_df = pd.DataFrame()
@@ -47,16 +50,15 @@ class Report:
 
         debug_df["id"] = debug_df.index.get_level_values("id")
         debug_df["col"] = debug_df.index.get_level_values("col")
-        debug_df["score"] = prob_df.stack().values.tolist()
+        debug_df["score"] = (dataset.prediction_df.stack().values > 0.5).tolist()
         debug_df["result"] = dataset.groundtruth_df.stack().values.tolist()
         debug_df["compare"] = debug_df["from"] == debug_df["to"]
-        return debug_df, prob_df
+        return debug_df
 
     def serialize(self, output_path):
         report_path = Path(output_path) / "report.csv"
         debug_path = Path(output_path) / "debug.csv"
         matrix_path = Path(output_path) / "matrix.csv"
-        score_path = Path(output_path) / "scores.csv"
 
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -67,5 +69,3 @@ class Report:
 
         self.matrix["index"] = pd.Series(["True", "False"])
         self.matrix.to_csv(matrix_path, index=None, quoting=csv.QUOTE_ALL)
-
-        self.scores.to_csv(score_path, index=None, quoting=csv.QUOTE_ALL)

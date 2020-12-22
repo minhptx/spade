@@ -10,5 +10,5 @@ class MissingValueChecker(ErrorChecker):
     def fit(self, dirty_df: pd.DataFrame, col):
         pass
 
-    def transform(self, dirty_df: pd.DataFrame, col, threshold):
-        return np.asarray([0 if val.strip().lower() in ["", "null", "none", "na"] else 1 for val in dirty_df[col].values])
+    def transform(self, dirty_df: pd.DataFrame, col):
+        return dirty_df[col].swifter.apply(lambda x: 0 if x.strip().lower() in ["", "null", "none", "na"] else 1).values

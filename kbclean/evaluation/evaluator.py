@@ -40,11 +40,9 @@ class Evaluator:
         prob_df = detector.detect(raw_df, cleaned_df)
         return Report(prob_df, raw_df, cleaned_df, groundtruth_df)
 
-    def ievaluate_df(
-        self, detector, dataset, label_df, col2pairs
-    ):
-        prob_df = detector.idetect(dataset.dirty_df, label_df, col2pairs)
-        return prob_df, Report(prob_df, dataset)
+    def ievaluate_df(self, detector, dataset):
+        detector.idetect(dataset)
+        return Report(dataset)
 
     def evaluate(self, detector, dataset, output_path=None):
         name2raw, name2cleaned, name2groundtruth = self.read_dataset(dataset)
@@ -71,62 +69,42 @@ class Evaluator:
 
         return name2report
 
-    def ievaluate(self, detector, method, dataset_path, output_path, k=1, e=5):
+    def ievaluate(self, detector, method, dataset_path, output_path, k=1, num_examples =5):
         output_path = Path(output_path)
         self.read_dataset(dataset_path)
         running_times = []
         name2ireport = [{} for _ in range(k)]
 
         for name, dataset in self.name2dataset.items():
-            label_df = pd.DataFrame(
-                np.ones((len(dataset.dirty_df), len(dataset.dirty_df.columns))) * -1,
-                columns=dataset.dirty_df.columns,
-            )
-            col2pairs = defaultdict(list)
-
             print(f"Evaluating on {name}...")
             if all(self.name2dataset[name].groundtruth_df.stack() == True):
                 continue
             logger.info(f"Evaluating on {name}...")
 
-            oracle = Oracle(self.name2dataset[name])
-
             start_time = time.time()
 
-            if detector.hparams.combine_method =="metal":
-                recommender = MetalLeaner(
-                    self.name2dataset[name].dirty_df, oracle, detector.hparams
-                )
+            if detector.hparams.combine_method == "metal":
+                recommender = MetalLeaner(self.name2dataset[name], detector.hparams)
             else:
-                recommender = PSLearner(
-                    self.name2dataset[name].dirty_df, oracle, detector.hparams
-                )
+                recommender = PSLearner(self.name2dataset[name], detector.hparams)
             print("Loading Metal time", time.time() - start_time)
-
-            score_df = None
 
             for i in range(k):
                 start_time = time.time()
                 logger.info("----------------------------------------------------")
                 logger.info(f"Running active learning step {i}...")
-                for col_i, col in enumerate(self.name2dataset[name].dirty_df.columns):
-                    label_df, col2pairs = recommender.next_for_each_col(
-                        col, score_df, label_df, col2pairs, e
-                    )
+                recommender.next(num_examples)
 
                 running_time = time.time() - start_time
                 logger.info(f"Total recommendation time for step {i}: {running_time}")
 
                 start_time = time.time()
 
-                score_df, report = self.ievaluate_df(
-                    detector,
-                    self.name2dataset[name],
-                    label_df,
-                    col2pairs,
-                )
+                report = self.ievaluate_df(detector, self.name2dataset[name])
 
-                logger.info(f"Total running time for step {i}: {time.time() - start_time}")
+                logger.info(
+                    f"Total running time for step {i}: {time.time() - start_time}"
+                )
 
                 running_times.append(time.time() - start_time)
 
@@ -141,7 +119,6 @@ class Evaluator:
                 )
 
                 name2ireport[i][name] = report.report
-                score_df = report.scores
                 detector.reset()
 
         for i in range(k):

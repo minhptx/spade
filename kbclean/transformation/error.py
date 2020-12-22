@@ -1,11 +1,13 @@
+import asyncio
 import itertools
-from logging import error
 import random
 import time
 from abc import ABCMeta
 from collections import Counter
 from difflib import SequenceMatcher
+from logging import error
 
+import modin
 import numpy as np
 import pandas as pd
 import regex as re
@@ -13,7 +15,6 @@ import swifter
 from kbclean.datasets.dataset import Dataset
 from loguru import logger
 from strsimpy.jaccard import Jaccard
-import asyncio
 
 SOS = "^"
 EOS = "$"
@@ -258,7 +259,7 @@ class DeleteAt(TransformOp):
         return hash(str(self))
 
 
-async def learn_transform(error_str, cleaned_str):
+def learn_transform(error_str, cleaned_str):
     s = SequenceMatcher(None, cleaned_str, error_str)
     transforms = s.get_opcodes()
 
@@ -306,10 +307,8 @@ class Clean2ErrorGenerator:
     def __init__(self):
         self.rule2prob = None
 
-    async def fit(self, string_pairs):
-        transforms = await asyncio.gather(
-            *(learn_transform(*string_pair) for string_pair in string_pairs)
-        )
+    def fit(self, string_pairs):
+        transforms = [learn_transform(*string_pair) for string_pair in string_pairs]
 
         transforms = [item for transform in transforms for item in transform]
         counter = Counter(transforms)
@@ -342,10 +341,10 @@ class Clean2ErrorGenerator:
 
         rules = list(self.rule2prob.keys())
 
-        if row.index in pos_indices + neg_indices:
+        if row.name in pos_indices + neg_indices:
             new_values.append(row[col])
-            new_labels.append(row[f"{col}_values"])
-            if row.index in neg_indices:
+            new_labels.append(row[f"{col}_labels"])
+            if row.name in neg_indices:
                 new_rules.append("Negative Populated Example (<0.5)")
             else:
                 new_rules.append("Positive Populated Example (>0.5)")
@@ -359,9 +358,9 @@ class Clean2ErrorGenerator:
                         new_labels.append(0.0)
                         new_rules.append(str(rule))
                         break
-        else:
+        elif row[f"{col}_labels"] > 0.5:
             new_values.append(row[col])
-            new_labels.append(0.7)
+            new_labels.append(1.0)
             new_rules.append("Not labeled example")
 
             random.shuffle(rules)
@@ -370,7 +369,7 @@ class Clean2ErrorGenerator:
                     result = rule.transform(row[col])
                     if result not in pos_values:
                         new_values.append(result)
-                        new_labels.append(0.3)
+                        new_labels.append(0.0)
                         new_rules.append(str(rule))
                         break
         row[col] = new_values
@@ -378,32 +377,42 @@ class Clean2ErrorGenerator:
         row["new_rules"] = new_rules
         return row
 
-    def transform(self, dirty_df, label_df, col, pos_indices, neg_indices, str_pairs):
-        new_dirty_df = dirty_df.copy()
-        new_label_df = label_df.copy()
+    def transform(self, dataset, col, pos_indices, neg_indices):
+        new_dirty_df = dataset.dirty_df.copy()
+        new_label_df = dataset.label_df.copy()
         new_rules = []
 
-        # indices = self._filter(dirty_df, col, pos_indices, neg_indices)
-
-        pos_values = set([dirty_df[col][index] for index in pos_indices])
+        pos_values = set([dataset.dirty_df[col][index] for index in pos_indices])
 
         positive = 0
         transformed_negative = 0
 
-        row = dirty_df.iloc[0]
-        label_row = label_df.iloc[0]
+        row = dataset.dirty_df.iloc[0]
+        label_row = dataset.label_df.iloc[0]
 
-        new_dirty_df = new_dirty_df.swifter.apply(lambda x: self.sub_transform(x, col, pos_indices, neg_indices, pos_values))
+        new_dirty_df[f"{col}_labels"] = new_label_df[col]
+        new_dirty_df[f"{col}_weights"] = dataset.soft_label_df[col]
+
+        new_dirty_df = new_dirty_df.swifter.allow_dask_on_strings(True).apply(
+            self.sub_transform,
+            axis=1,
+            raw=False,
+            args=[col, pos_indices, neg_indices, pos_values],
+        )
+        new_dirty_df[col] = new_dirty_df[col].apply(lambda x: np.nan if len(x) == 0 else x)
+        new_dirty_df = new_dirty_df.dropna()
+
+        new_label_df = new_label_df.iloc[new_dirty_df.index.tolist()]
+
         new_label_df[col] = new_dirty_df["new_labels"]
         new_rules = new_dirty_df["new_rules"]
 
         new_dirty_df = new_dirty_df.drop(["new_labels", "new_rules"], axis=1)
         new_dirty_df = new_dirty_df.explode(col)
         new_label_df = new_label_df.explode(col)
-        new_rules = [x for rules in new_rules for x in rules ]
+        new_rules = [x for rules in new_rules for x in rules]
 
-
-        for error_str, clean_str in str_pairs:
+        for error_str, clean_str in dataset.col2labeled_pairs[col]:
             new_row = row.copy()
             new_row[col] = error_str
             new_groundtruth_row = label_row.copy()
@@ -426,7 +435,6 @@ class Clean2ErrorGenerator:
                 )
                 new_rules.append("True Example")
 
-
         logger.info(
             f"Training set have size {len(new_dirty_df)} with {positive} positives and {transformed_negative} transformed negative"
         )
@@ -436,109 +444,8 @@ class Clean2ErrorGenerator:
             new_rules,
         )
 
-    def fit_transform(
-        self, dirty_df, label_df, col: str, pos_indices, neg_indices, string_pairs
-    ):
-        asyncio.run(self.fit(string_pairs))
-
-        return self.transform(
-            dirty_df, label_df, col, pos_indices, neg_indices, string_pairs
-        )
-
-
-class SameClassGenerator:
-    def __init__(self):
-        self.rule2prob = {}
-
-    def learn_transform(self, error_str, cleaned_str):
-        s = SequenceMatcher(None, error_str, cleaned_str)
-        transforms = s.get_opcodes()
-
-        transform_ops = []
-
-        for (tag, i1, i2, j1, j2) in transforms:
-            if tag == "replace":
-                transform_ops.append(
-                    ReplaceAt(
-                        cleaned_str[j1:j2],
-                        error_str[i1:i2],
-                        len(
-                            re.findall(re.escape(cleaned_str[j1:j2]), cleaned_str[:j2])
-                        ),
-                    )
-                )
-
-                if cleaned_str.count(cleaned_str[j1:j2]) == 1:
-                    transform_ops.append(
-                        ReplaceAll(cleaned_str[j1:j2], error_str[i1:i2])
-                    )
-
-        return transform_ops
-
-    def fit(self, string_pairs):
-        transforms = []
-        for error_str, cleaned_str in string_pairs:
-            transforms.extend(self.learn_transform(error_str, cleaned_str))
-
-        counter = Counter(transforms)
-        sum_counter = sum(counter.values())
-        self.rule2prob = {
-            transform: count * 1.0 / sum_counter for transform, count in counter.items()
-        }
-
-        return self.rule2prob
-
-    def transform(self, dataset, col, pos_indices, neg_indices):
-        new_dirty_df = pd.DataFrame(columns=dataset.dirty_df.columns, dtype=str)
-        new_clean_df = pd.DataFrame(columns=dataset.clean_df.columns, dtype=str)
-
-        pos_values = [dataset.dirty_df[col][index] for index in pos_indices]
-
-        for index in neg_indices:
-            neg_row = dataset.dirty_df.iloc[index]
-            pos_row = dataset.clean_df.iloc[index]
-            for rule, _ in self.rule2prob.items():
-                if rule.validate(neg_row[col]):
-                    new_row = neg_row.copy()
-                    result = rule.transform(neg_row[col])
-                    new_row[col] = result
-                    new_dirty_df = new_dirty_df.append(new_row, ignore_index=True)
-                    new_clean_df = new_clean_df.append(pos_row, ignore_index=True)
-
-            new_dirty_df = new_dirty_df.append(neg_row, ignore_index=True)
-            new_clean_df = new_clean_df.append(pos_row, ignore_index=True)
-
-        for index in pos_indices:
-            pos_row = dataset.dirty_df.iloc[index]
-
-            new_dirty_df = new_dirty_df.append(pos_row, ignore_index=True)
-            new_clean_df = new_clean_df.append(pos_row, ignore_index=True)
-
-        return Dataset(
-            new_dirty_df.reset_index(drop=True).sort_index().sort_index(axis=1),
-            new_clean_df.reset_index(drop=True).sort_index().sort_index(axis=1),
-        )
-
-    def fit_transform(
-        self, dataset: Dataset, col: str, pos_indices, neg_indices, col2pairs
-    ):
-        neg_values = dataset.dirty_df.loc[neg_indices, col].values.tolist()
-        pos_values = dataset.dirty_df.loc[pos_indices, col].values.tolist()
-        jaccard = Jaccard(1)
-        string_pairs = []
-        count = 0
-        if pos_values:
-            while len(string_pairs) < 3000 and count < 10000:
-                pos_value1 = random.choice(pos_values)
-                pos_value2 = random.choice(pos_values)
-                if (
-                    pos_value1 != pos_value2
-                    and jaccard.similarity(pos_value1, pos_value2) > 0.5
-                ):
-                    string_pairs.append((pos_value1, pos_value2))
-                count += 1
-
-        self.fit(string_pairs)
+    def fit_transform(self, dataset, col: str, pos_indices, neg_indices):
+        self.fit(dataset.col2labeled_pairs[col])
 
         return self.transform(dataset, col, pos_indices, neg_indices)
 
@@ -546,13 +453,8 @@ class SameClassGenerator:
 class ErrorGenerator:
     def __init__(self):
         self.clean2error = Clean2ErrorGenerator()
-        self.same_class = SameClassGenerator()
 
-    def fit_transform(
-        self, dirty_df, label_df, col, pos_indices, neg_indices, string_pairs
-    ):
-        dataset1 = self.clean2error.fit_transform(
-            dirty_df, label_df, col, pos_indices, neg_indices, string_pairs
-        )
+    def fit_transform(self, dataset, col: str, pos_indices, neg_indices):
+        dataset = self.clean2error.fit_transform(dataset, col, pos_indices, neg_indices)
 
-        return dataset1
+        return dataset

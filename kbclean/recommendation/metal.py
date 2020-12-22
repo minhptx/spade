@@ -1,18 +1,19 @@
+from collections import defaultdict
 import itertools
 import time
 
 import numpy as np
 import pandas as pd
 from kbclean.recommendation.checker.format import (
-    CharFormatTHChecker,
-    PunctFormatTHChecker,
-    WordFormatTHChecker,
+    CharFormatChecker, CharChecker,
+    PunctFormatChecker,
+    WordFormatChecker,
 )
 from kbclean.recommendation.checker.missing_value import MissingValueChecker
 from kbclean.recommendation.checker.typo import (
-    FastTextTHChecker,
-    WebTableTHChecker,
-    DictTypoTHChecker,
+    FastTextChecker,
+    WebTableChecker,
+    DictTypoChecker,
 )
 from kbclean.utils.data.attribute import xngrams
 from kbclean.utils.search.query import ESQuery
@@ -21,7 +22,7 @@ from snorkel.labeling.model.label_model import LabelModel
 
 
 def min_ngram_counts(es_query, values):
-    trigrams = list(
+    trigrams = set(
         itertools.chain.from_iterable(
             [["".join(x) for x in xngrams(list(value), 3, False)] for value in values]
         )
@@ -57,14 +58,17 @@ class MetalLeaner:
         self.col2criteria = {
             col: [
                     (f"missing_values", MissingValueChecker(), [1]),
-                    (f"fasttext_typo", FastTextTHChecker(), [1]),
-                    (f"table_typo", WebTableTHChecker(self.es_query), thresholds1),
-                    (f"char_format", CharFormatTHChecker(), thresholds),
-                    (f"word_format", WordFormatTHChecker(), thresholds),
-                    (f"punct_format", PunctFormatTHChecker(), thresholds),
+                    (f"fasttext_typo", FastTextChecker(), [1]),
+                    (f"table_typo", WebTableChecker(self.es_query), thresholds1),
+                    (f"char_format", CharFormatChecker(), thresholds),
+                    (f"word_format", WordFormatChecker(), thresholds),
+                    (f"punct_format", PunctFormatChecker(), thresholds),
+                    (f"char", CharChecker(), thresholds),
                 ]
             for col in self.dirty_df.columns
         }
+
+        self.col2features = {}
 
 
         self.col2label_model = {
@@ -77,17 +81,21 @@ class MetalLeaner:
         feature_arrs = []
 
         feature_df = pd.DataFrame({col: self.dirty_df[col].values.tolist()})
+        if all(label_df[col] == -1):
+            for name, criterion, threshold in self.col2criteria[col]:
+                start_time = time.time()
+                print(name)
+                val_arr = criterion.fit_transform(self.dirty_df, col)
+                for threshold in threshold:
+                    feature_arr = val_arr >= threshold
+                    feature_df[f"{threshold}_{name}"] = feature_arr
 
-        for name, criterion, threshold in self.col2criteria[col]:
-            for threshold in threshold:
-                if all(label_df[col] == -1):
-                    val_arr = criterion.fit_transform(self.dirty_df, col, threshold=threshold)
-                else:
-                    val_arr = criterion.transform(self.dirty_df, col, threshold=threshold)
-                feature_df[f"{threshold}_{name}"] = val_arr
-
-                feature_arrs.append(val_arr.reshape(-1, 1))
-        feature_df.to_csv(f"{self.hparams.debug_dir}/{col}_feature.csv")
+                    feature_arrs.append(feature_arr.reshape(-1, 1))
+                print(name, criterion, time.time() - start_time)
+            self.col2features[col] = feature_arrs
+            feature_df.to_csv(f"{self.hparams.debug_dir}/{col}_feature.csv")
+        else:
+            feature_arrs = self.col2features[col]
         feature_matrix = np.concatenate(feature_arrs, axis=1).astype(int)
         return feature_matrix
 
@@ -95,9 +103,9 @@ class MetalLeaner:
         feature_matrix = self.get_features(col, score_df, label_df)
         feature_df = pd.DataFrame(feature_matrix, dtype=str)
         feature_df["feature_str"] = feature_df.agg("|||".join, axis=1)
+
         self.col2label_model[col].fit(feature_matrix)
         self.col2feature_df[col] = feature_df
-
         return self.col2label_model[col].predict_proba(feature_matrix)[:, 1]
 
     def predict(self, probs, col, label_df, col2pairs, e):
@@ -144,7 +152,7 @@ class MetalLeaner:
 
     def fit_predict(self, col, score_df, label_df, col2pairs, e):
 
-        if any(label_df[col] == -1):
+        if all(label_df[col] == -1):
             probs = self.fit(col, score_df, label_df, col2pairs)
 
             result_df = pd.DataFrame(probs, columns=["negative_scores"])
@@ -156,7 +164,7 @@ class MetalLeaner:
             probs = np.abs(score_df[col].values - 0.5)
             return self.predict(probs, col, label_df, col2pairs, e)
 
-    def next_for_each_col(self, col, score_df, label_df, col2pairs, e):
+    def next_for_col(self, col, score_df, label_df, col2pairs, e):
         label_df = self.fit_predict(col, score_df, label_df, col2pairs, e)
 
         return label_df, col2pairs
