@@ -78,7 +78,6 @@ class PSLearner:
                 (f"missing_values", MissingValueChecker()),
                 (f"fasttext_typo", FastTextChecker()),
                 (f"dict_typo", DictTypoChecker()),
-                (f"table_typo", WebTableBoolChecker(self.es_query)),
                 (f"char", CharChecker()),
                 (f"char_format", CharFormatChecker()),
                 (f"word_format", WordFormatChecker()),
