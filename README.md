@@ -1,4 +1,4 @@
-# B-Clean
+# ACT
 
 B-Clean is a library built to support `Bring Your Own Data (BYOD)` project. B-Clean provides different functionalities to detect outliers in tabular datasets and suggest possible transformations to clean the data.
 
