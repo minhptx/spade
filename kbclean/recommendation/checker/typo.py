@@ -70,15 +70,15 @@ class DictTypoChecker(ErrorChecker):
             .swifter.apply(
                 lambda x: (
                     x,
-                    len(self.model.unknown([tok for tok in nltk.wordpunct_tokenize(x)]))
-                    == 0,
+                    len(self.model.unknown([tok for tok in nltk.wordpunct_tokenize(x)])),
                 )
             )
             .values
         )
 
     def transform(self, dirty_df: pd.DataFrame, col):
-        return dirty_df[col].swifter.apply(lambda x: self.value2count[x]).values
+        max_count = max(self.value2count.values()) + 1
+        return dirty_df[col].swifter.apply(lambda x: 1 - self.value2count[x] / max_count).values
 
 
 class FastTextChecker(ErrorChecker):
@@ -92,7 +92,7 @@ class FastTextChecker(ErrorChecker):
         try:
             result = np.count_nonzero(
                 [
-                    (x.sum() == 0)
+                    x.sum()
                     for x in self.fasttext.get_vecs_by_tokens(
                         self.tokenizer(str_value), lower_case_backup=True
                     )
@@ -107,12 +107,13 @@ class FastTextChecker(ErrorChecker):
     def fit(self, dirty_df: pd.DataFrame, col):
         self.value2count = dict(
             dirty_df[col]
-            .swifter.apply(lambda x: (x, self._count_nonmeaning(x) == 0))
+            .swifter.apply(lambda x: (x, self._count_nonmeaning(x)))
             .values
         )
 
     def transform(self, dirty_df: pd.DataFrame, col):
-        return dirty_df[col].swifter.apply(lambda x: self.value2count[x]).values
+        max_count = max(self.value2count.values()) + 1
+        return dirty_df[col].swifter.apply(lambda x: 1 - self.value2count[x] / max_count).values
 
 
 class WebTableBoolChecker(ErrorChecker):

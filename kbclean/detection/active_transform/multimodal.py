@@ -1,4 +1,3 @@
-from kbclean.detection.base import ActiveDetector
 import os
 import random
 import time
@@ -7,6 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from kbclean.detection.active_transform.holo import HoloDetector
 from kbclean.detection.features.base import UnionFeaturizer
 from kbclean.detection.features.embedding import CharSeqFT
 from kbclean.transformation.error import ErrorGenerator
@@ -118,7 +118,7 @@ class LSTMModel(LightningModule):
         return [optim.AdamW(self.parameters(), lr=self.hparams.lr)], []
 
 
-class LSTMDetector(ActiveDetector):
+class LSTMDetector(HoloDetector):
     def __init__(self, hparams):
         self.hparams = hparams
         self.feature_extractor = UnionFeaturizer({"char_ft": CharSeqFT()})

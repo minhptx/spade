@@ -1,17 +1,17 @@
-from pathlib import Path
-from kbclean.detection.active_transform.random_forest import RFDetector
 import os
 import random
 import shutil
 import sys
+from pathlib import Path
 
 import click
-from kbclean.detection.active_transform import HoloDetector, LSTMDetector
+import neptune
+from kbclean.detection.active_transform import LSTMDetector
+from kbclean.detection.active_transform.dnn import DNNDetector
+from kbclean.detection.active_transform.random_forest import RFDetector
 from kbclean.evaluation import Evaluator
 from kbclean.utils.inout import load_config
 from loguru import logger
-
-import neptune
 
 neptune.init(
     project_qualified_name="clapika/act",
@@ -36,7 +36,7 @@ config = {
 }
 
 
-name2model = {"holo": HoloDetector, "lstm": LSTMDetector, "random_forest": RFDetector}
+name2model = {"lstm": LSTMDetector, "random_forest": RFDetector, "dnn": DNNDetector}
 
 logger.configure(**config)
 

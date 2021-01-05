@@ -50,7 +50,7 @@ class Report:
 
         debug_df["id"] = debug_df.index.get_level_values("id")
         debug_df["col"] = debug_df.index.get_level_values("col")
-        debug_df["score"] = (dataset.prediction_df.stack().values > 0.5).tolist()
+        debug_df["score"] = (dataset.prediction_df.stack().values).tolist()
         debug_df["result"] = dataset.groundtruth_df.stack().values.tolist()
         debug_df["compare"] = debug_df["from"] == debug_df["to"]
         return debug_df

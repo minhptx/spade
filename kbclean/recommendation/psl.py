@@ -72,6 +72,7 @@ class PSLearner:
             col: PSLUtils.create_model_from_config_dir(f"{col}_0",hparams.psl_config_path)
             for col in self.dataset.dirty_df.columns
         }
+        print(self.dataset.dirty_df.columns)
 
         self.col2criteria = {
             col: [
@@ -79,6 +80,7 @@ class PSLearner:
                 (f"fasttext_typo", FastTextChecker()),
                 (f"dict_typo", DictTypoChecker()),
                 (f"char", CharChecker()),
+                (f"web_table", WebTableBoolChecker(es_query=self.es_query)),
                 (f"char_format", CharFormatChecker()),
                 (f"word_format", WordFormatChecker()),
                 (f"punct_format", PunctFormatChecker()),
@@ -213,7 +215,7 @@ class PSLearner:
                     self.dataset.label_df.loc[row_i, col] = float(label)
                     self.dataset.soft_label_df.loc[row_i, col] = float(label)
 
-
+    
     def fit_predict(self, col, num_examples):
         if any(self.dataset.label_df[col] == -1):
             probs = self.fit(col)

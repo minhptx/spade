@@ -334,7 +334,7 @@ class Clean2ErrorGenerator:
 
         return indices
 
-    def sub_transform(self, row, col, pos_indices, neg_indices, pos_values):
+    def sub_transform(self, row, col, pos_indices, neg_indices, pos_values, neg_values):
         new_values = []
         new_labels = []
         new_rules = []
@@ -358,6 +358,11 @@ class Clean2ErrorGenerator:
                         new_labels.append(0.0)
                         new_rules.append(str(rule))
                         break
+            else:
+                if neg_values:
+                    new_values.append(random.choice(neg_values))
+                    new_labels.append(0.0)
+                    new_rules.append("No applicable rule - Negative")
         elif row[f"{col}_labels"] > 0.5:
             new_values.append(row[col])
             new_labels.append(1.0)
@@ -372,6 +377,11 @@ class Clean2ErrorGenerator:
                         new_labels.append(0.0)
                         new_rules.append(str(rule))
                         break
+            else:
+                if neg_values:
+                    new_values.append(random.choice(neg_values))
+                    new_labels.append(0.0)
+                    new_rules.append("No applicable rule - Negative")
         row[col] = new_values
         row["new_labels"] = new_labels
         row["new_rules"] = new_rules
@@ -382,7 +392,10 @@ class Clean2ErrorGenerator:
         new_label_df = dataset.label_df.copy()
         new_rules = []
 
-        pos_values = set([dataset.dirty_df[col][index] for index in pos_indices])
+        pos_values = [x[0] for x in dataset.col2labeled_pairs[col]]
+
+        pos_values = set(pos_values + [dataset.dirty_df[col][index] for index in pos_indices])
+        neg_values = list(set([dataset.dirty_df[col][index] for index in neg_indices]))
 
         positive = 0
         transformed_negative = 0
@@ -397,7 +410,7 @@ class Clean2ErrorGenerator:
             self.sub_transform,
             axis=1,
             raw=False,
-            args=[col, pos_indices, neg_indices, pos_values],
+            args=[col, pos_indices, neg_indices, pos_values, neg_values],
         )
         new_dirty_df[col] = new_dirty_df[col].apply(lambda x: np.nan if len(x) == 0 else x)
         new_dirty_df = new_dirty_df.dropna()

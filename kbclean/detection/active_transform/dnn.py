@@ -1,4 +1,3 @@
-from kbclean.detection.base import ActiveDetector
 import os
 import random
 import time
@@ -7,87 +6,72 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from kbclean.detection.features.base import UnionFeaturizer
-from kbclean.detection.features.embedding import CharSeqFT
-from kbclean.transformation.error import ErrorGenerator
+from kbclean.datasets.dataset import Dataset
+from kbclean.detection.active_transform.holo import HoloDetector
+from kbclean.detection.features.base import ConcatFeaturizer, UnionFeaturizer
+from kbclean.detection.features.embedding import CharAvgFT, WordAvgFT
+from kbclean.detection.features.statistics import StatsFeaturizer
+from kbclean.transformation.error import Clean2ErrorGenerator, ErrorGenerator
 from kbclean.utils.data.helpers import split_train_test_dls, unzip_and_stack_tensors
 from loguru import logger
-from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.core.lightning import LightningModule
+from pytorch_lightning import LightningDataModule, LightningModule, Trainer
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from torch import nn, optim
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data.dataset import TensorDataset
 
 
-class Attention(nn.Module):
-    def __init__(self, feature_dim):
-        super(Attention, self).__init__()
-        weight = torch.zeros(feature_dim, 1)
-        nn.init.kaiming_uniform_(weight)
+class Reducer(nn.Module):
+    def __init__(self, input_dim, reduce_dim):
+        super(Reducer, self).__init__()
 
-        self.W = nn.Parameter(weight)
-        self.b = nn.Parameter(torch.zeros(1))
-        self.feature_dim = feature_dim
-
-    def forward(self, x):
-        eij = (
-            torch.mm(x.view(-1, self.feature_dim), self.W).view(-1, x.shape[1]) + self.b
+        self.model = nn.Sequential(
+            # nn.BatchNorm1d(input_dim),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.ReLU(),
+            nn.Linear(input_dim, reduce_dim),
         )
 
-        eij = torch.tanh(eij)
-        a = torch.exp(eij)
-
-        a = a / (torch.sum(a, 1, keepdim=True) + 1e-10)
-        weighted_input = x * torch.unsqueeze(a, -1)
-        return torch.sum(weighted_input, dim=1)
+    def forward(self, inputs):
+        return self.model(inputs)
 
 
-class LSTMModel(LightningModule):
+class DNNModel(LightningModule):
     def __init__(self, hparams):
         super().__init__()
 
         self.hparams = hparams
+        self.reducers = nn.ModuleList()
 
-        self.dropout = nn.Dropout(0.3)
+        for feature_dim in self.hparams.feature_dims:
+            self.reducers.append(Reducer(feature_dim, self.hparams.reduce_dim))
 
-        self.char_lstm = nn.GRU(
-            300, self.hparams.char_hid_dim, batch_first=True, bidirectional=True
+        self.model = nn.Sequential(
+            # nn.BatchNorm1d(self.hparams.reduce_dim * len(self.hparams.feature_dims)),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.ReLU(),
+            nn.Linear(self.hparams.reduce_dim * len(self.hparams.feature_dims), 1,),
         )
 
-        # self.word_lstm = nn.GRU(
-        #     300, self.hparams.word_hid_dim, batch_first=True, bidirectional=True
-        # )
+    def forward(self, char_inputs, word_inputs, statistics):
+        concat_inputs = []
 
-        self.char_attention = Attention(self.hparams.char_hid_dim * 2)
+        for idx, inputs in enumerate([char_inputs, word_inputs, statistics]):
+            concat_inputs.append(self.reducers[idx](inputs.float()))
 
-        # self.word_attention = Attention(self.hparams.word_hid_dim * 2)
+        attn_outputs = torch.cat(concat_inputs, dim=1)
 
-        self.fc = nn.Linear(
-            2 * (self.hparams.char_hid_dim), 1,
-        )
-
-    def forward(self, char_inputs, char_lengths):
-        packed_inputs = pack_padded_sequence(
-            char_inputs, char_lengths.cpu(), batch_first=True, enforce_sorted=False
-        )
-        packed_outputs, h = self.char_lstm(packed_inputs)
-        outputs, _ = pad_packed_sequence(packed_outputs, batch_first=True)
-        h = torch.cat([h[0:1, :, :], h[1:, :, :]], dim=2)
-
-        char_attn_outputs = self.char_attention(outputs)
-
-        attn_outputs = torch.cat([char_attn_outputs], dim=1)
-
-        return torch.sigmoid(self.fc(attn_outputs))
+        return torch.sigmoid(self.model(attn_outputs.float()))
 
     def training_step(self, batch, batch_idx):
-        char_inputs, char_lengths, labels = batch
+        (char_inputs, word_inputs, features, labels) = batch
         labels = labels.view(-1, 1)
         weights = torch.zeros_like(labels).type_as(labels).float()
         weights[labels <= 0.5] = (labels >= 0.5).sum().float() / labels.shape[0]
         weights[labels >= 0.5] = (labels <= 0.5).sum().float() / labels.shape[0]
 
-        probs = self.forward(char_inputs, char_lengths)
+        probs = self.forward(char_inputs, word_inputs, features)
 
         loss = F.binary_cross_entropy(probs, labels.float(), weights)
         preds = probs >= 0.5
@@ -99,13 +83,13 @@ class LSTMModel(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        char_inputs, char_lengths, labels = batch
+        (char_inputs, word_inputs, features, labels) = batch
         labels = labels.view(-1, 1)
         weights = torch.zeros_like(labels).type_as(labels).float()
         weights[labels <= 0.5] = (labels >= 0.5).sum().float() / labels.shape[0]
         weights[labels >= 0.5] = (labels <= 0.5).sum().float() / labels.shape[0]
 
-        probs = self.forward(char_inputs, char_lengths)
+        probs = self.forward(char_inputs, word_inputs, features)
 
         loss = F.binary_cross_entropy(probs, labels.float(), weights)
         preds = probs >= 0.5
@@ -118,10 +102,12 @@ class LSTMModel(LightningModule):
         return [optim.AdamW(self.parameters(), lr=self.hparams.lr)], []
 
 
-class LSTMDetector(ActiveDetector):
+class DNNDetector(HoloDetector):
     def __init__(self, hparams):
         self.hparams = hparams
-        self.feature_extractor = UnionFeaturizer({"char_ft": CharSeqFT()})
+        self.feature_extractor = UnionFeaturizer(
+            {"char_ft": CharAvgFT(), "word_ft": WordAvgFT(), "stats": StatsFeaturizer()}
+        )
         self.training = True
 
     def extract_features(self, dirty_df, label_df, col):
@@ -137,12 +123,15 @@ class LSTMDetector(ActiveDetector):
 
         if self.training:
             labels = label_df[col]
-            return features + [torch.tensor(labels.values.tolist())]
+            return (
+                features
+                + [torch.tensor(labels.values.tolist())]
+            )
         return features
 
     def reset(self):
         try:
-            self.model = LSTMModel(self.hparams.model)
+            self.model = DNNModel(self.hparams.model)
         except:
             pass
 
@@ -169,7 +158,7 @@ class LSTMDetector(ActiveDetector):
 
         start_time = time.time()
 
-        self.model = LSTMModel(self.hparams.model)
+        self.model = DNNModel(self.hparams.model)
 
         train_data = TensorDataset(*feature_tensors_with_labels)
 
@@ -215,7 +204,7 @@ class LSTMDetector(ActiveDetector):
 
     def idetect(self, dataset: pd.DataFrame):
         for col_i, col in enumerate(dataset.dirty_df.columns):
-            value_arr = dataset.label_df.iloc[:, col_i].values
+            value_arr = dataset.label_df[col].values
             neg_indices = np.where(np.logical_and(0 <= value_arr, value_arr <= 0.5))[
                 0
             ].tolist()
@@ -227,8 +216,9 @@ class LSTMDetector(ActiveDetector):
             )
 
             if len(neg_indices) == 0:
-                dataset.prediction_df[col] = [1.0 for _ in range(len(dataset.dirty_df))]
-
+                dataset.prediction_df[col] = pd.Series(
+                    [1.0 for _ in range(len(dataset.dirty_df))]
+                )
             else:
                 logger.info(f"Detecting column {col} with {len(examples)} examples")
 
@@ -242,4 +232,4 @@ class LSTMDetector(ActiveDetector):
                 df["result"] = outliers
                 df["training_label"] = dataset.label_df[col].values.tolist()
                 df.to_csv(f"{self.hparams.debug_dir}/{col}_prediction.csv", index=None)
-                dataset.prediction_df[col] = outliers
+                dataset.prediction_df[col] = pd.Series(outliers)

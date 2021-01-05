@@ -1,0 +1,8 @@
+embedding_path: embeddings/en_vectors_ft_lg
+save_path: saved_models/active
+gen_method: normal
+es_host: ckg05
+es_port: 9200
+psl_config_path: psl/config
+psl_data_path: psl/data
+combine_method: psl
