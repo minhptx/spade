@@ -78,8 +78,8 @@ class PSLearner:
                 (f"missing_values", MissingValueChecker()),
                 (f"fasttext_typo", FastTextChecker()),
                 (f"dict_typo", DictTypoChecker()),
-                (f"table_typo", WebTableBoolChecker(self.es_query)),
                 (f"char", CharChecker()),
+                ("web", WebTableBoolChecker(self.es_query)),
                 (f"char_format", CharFormatChecker()),
                 (f"word_format", WordFormatChecker()),
                 (f"punct_format", PunctFormatChecker()),
@@ -162,6 +162,8 @@ class PSLearner:
                 )
 
         result = self.col2label_model[col].infer(cleanup_temp=True)
+        result = {pred.name(): values for pred, values in result.items()}
+        print(result)
         target_result = result["TARGET"]
         target_result = target_result.sort_values(by=[0])
         target_result["value"] = target_result[0].apply(lambda x: self.dataset.dirty_df.loc[int(x), col])
@@ -176,7 +178,6 @@ class PSLearner:
         best_indices = []
         grouped_indices = []
 
-        self.dataset.soft_label_df[col] = 1 - probs
 
         main_chosen_indices = self.dataset.label_df[
             (self.dataset.label_df[col] == 0) & (self.dataset.label_df[col] == 1)

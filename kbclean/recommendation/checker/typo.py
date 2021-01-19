@@ -8,7 +8,7 @@ import pandas as pd
 import swifter
 from kbclean.recommendation.checker.base import ErrorChecker
 from kbclean.utils.data.attribute import xngrams
-from kbclean.utils.inout import FastTextLoader
+from kbclean.utils.inout import SingletonLoader
 from spellchecker import SpellChecker
 from torchtext.data.utils import get_tokenizer
 
@@ -61,7 +61,7 @@ def min_char_ngram_counts(es_query, values):
 
 class DictTypoChecker(ErrorChecker):
     def __init__(self):
-        self.model = FastTextLoader.get_spell_checker()
+        self.model = SingletonLoader.get_spell_checker()
         self.value2count = {}
 
     def fit(self, dirty_df: pd.DataFrame, col):
@@ -83,8 +83,8 @@ class DictTypoChecker(ErrorChecker):
 
 class FastTextChecker(ErrorChecker):
     def __init__(self):
-        self.tokenizer = FastTextLoader.get_tokenizer()
-        self.fasttext = FastTextLoader.get_instance()
+        self.tokenizer = SingletonLoader.get_tokenizer()
+        self.fasttext = SingletonLoader.get_instance()
         self.value2count = {}
 
     @lru_cache()
@@ -116,23 +116,26 @@ class FastTextChecker(ErrorChecker):
 
 
 class WebTableBoolChecker(ErrorChecker):
-    def __init__(self, es_query):
-        self.es_query = es_query
+    def __init__(self, bigram_path):
+        self.bigram_dict = SingletonLoader.get_bigram_dict(bigram_path)
 
     def fit(self, dirty_df: pd.DataFrame, col):
-        col_values = dirty_df[col].values.tolist()
-        counts = min_char_ngram_counts(self.es_query, tuple(col_values))
-
-        self.value2count = dict(zip(col_values, counts))
+        pass
 
     def transform(self, dirty_df: pd.DataFrame, col):
+        def get_min_count(value):
+            if not value:
+                return 0
+            tokens = [x for x in xngrams(value, 2, False)]
+            if tokens:
+                return min([self.bigram_dict.get(x, 100000) for x in tokens])
+            else:
+                return 100000
         return (
             dirty_df[col]
             .swifter.apply(
-                lambda x: self.value2count[x] / 10000
-                if self.value2count[x] < 10000
-                else 1
-            )
+                lambda x: get_min_count(x) / 10000
+            ).apply(lambda x: x if x < 1 else 1)
             .values
         )
 

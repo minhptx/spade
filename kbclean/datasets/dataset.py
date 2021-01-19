@@ -5,11 +5,16 @@ import pandas as pd
 
 
 class Dataset:
-    def __init__(self, dirty_df, clean_df):
+    def __init__(self, name, dirty_df, clean_df):
+        self.name = name
         self.dirty_df = dirty_df
         self.clean_df = clean_df
 
         self.groundtruth_df = self.clean_df == self.dirty_df
+        self.user_label_df = pd.DataFrame(
+            -1, columns=self.dirty_df.columns, index=self.dirty_df.index
+        )
+
         self.label_df = pd.DataFrame(
             -1, columns=self.dirty_df.columns, index=self.dirty_df.index
         )
@@ -40,4 +45,4 @@ class Dataset:
             file_path / "dirty.csv", header=0, dtype=str, keep_default_na=False
         )
 
-        return Dataset(dirty_df, clean_df)
+        return Dataset(file_path.name, dirty_df, clean_df)

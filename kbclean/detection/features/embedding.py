@@ -2,11 +2,11 @@ import pandas as pd
 import torch
 from kbclean.datasets.dataset import Dataset
 from kbclean.detection.features.base import BaseFeaturizer
-from kbclean.utils.inout import FastTextLoader
+from kbclean.utils.inout import SingletonLoader
 from torchnlp.encoders.text.text_encoder import stack_and_pad_tensors
 from torchtext.data.utils import get_tokenizer
 
-fasttext = FastTextLoader.get_instance()
+fasttext = SingletonLoader.get_instance()
 
 
 class CharSeqFT(BaseFeaturizer):

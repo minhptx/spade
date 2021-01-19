@@ -5,5 +5,4 @@ es_host: ckg05
 es_port: 9200
 psl_config_path: psl/config
 psl_data_path: psl/data
-bigram_path: data/train/bigram_count.csv
 combine_method: psl

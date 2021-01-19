@@ -1,5 +1,6 @@
 import csv
 from kbclean.recommendation.psl import PSLearner
+from kbclean.recommendation.psl_cluster import PSL2earner
 from kbclean.datasets.dataset import Dataset
 import time
 from collections import defaultdict
@@ -85,8 +86,9 @@ class Evaluator:
 
             if detector.hparams.combine_method == "metal":
                 recommender = MetalLeaner(self.name2dataset[name], detector.hparams)
-            else:
+            elif detector.hparams.combine_method == "psl":
                 recommender = PSLearner(self.name2dataset[name], detector.hparams)
+
             print("Loading Metal time", time.time() - start_time)
 
             for i in range(k):
@@ -97,8 +99,6 @@ class Evaluator:
 
                 running_time = time.time() - start_time
                 logger.info(f"Total recommendation time for step {i}: {running_time}")
-
-                start_time = time.time()
 
                 report = self.ievaluate_df(detector, self.name2dataset[name])
 
@@ -135,4 +135,72 @@ class Evaluator:
             )
             logger.info(f"Step {i} average report:\n{avg_report}")
             logger.info(f"Mean running time: {np.mean(running_times)}")
+        return name2ireport[k - 1]
+
+
+    def benchmark(self, detector, method, dataset_path, output_path, k=1, num_examples =5):
+        output_path = Path(output_path)
+        self.read_dataset(dataset_path)
+        running_times = []
+        name2ireport = [{} for _ in range(k)]
+
+        for name, dataset in self.name2dataset.items():
+            print(f"Evaluating on {name}...")
+            if all(self.name2dataset[name].groundtruth_df.stack() == True):
+                continue
+            logger.info(f"Evaluating on {name}...")
+
+            start_time = time.time()
+
+            if detector.hparams.combine_method == "metal":
+                recommender = MetalLeaner(self.name2dataset[name], detector.hparams)
+            elif detector.hparams.combine_method == "psl":
+                recommender = PSLearner(self.name2dataset[name], detector.hparams)
+
+            print("Loading Metal time", time.time() - start_time)
+
+            for i in range(k):
+                start_time = time.time()
+                logger.info("----------------------------------------------------")
+                logger.info(f"Running active learning step {i}...")
+                recommender.next(num_examples)
+
+                running_time = time.time() - start_time
+                logger.info(f"Total recommendation time for step {i}: {running_time}")
+
+            report = self.ievaluate_df(detector, self.name2dataset[name])
+
+            logger.info(
+                f"Total running time for step {i}: {time.time() - start_time}"
+            )
+
+            running_times.append(time.time() - start_time)
+
+            logger.info("Report:\n" + str(report.report))
+
+            report.serialize(
+                output_path
+                / method
+                / Path(dataset_path).name
+                / Path(name).stem
+                / str(0)
+            )
+
+            name2ireport[0][name] = report.report
+
+        for i in range(k):
+            if i == 0:
+                avg_report = self.average_report(*list(name2ireport[i].values()))
+                (Path(output_path) / method / Path(dataset_path).name / "summary").mkdir(
+                    exist_ok=True, parents=True
+                )
+                avg_report.to_csv(
+                    Path(output_path)
+                    / method
+                    / Path(dataset_path).name
+                    / "summary"
+                    / f"{i}.csv"
+                )
+                logger.info(f"Step {i} average report:\n{avg_report}")
+                logger.info(f"Mean running time: {np.mean(running_times)}")
         return name2ireport[k - 1]

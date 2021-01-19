@@ -1,7 +1,7 @@
 import csv
 from pathlib import Path
 from loguru import logger
-
+import neptune
 import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix
 import numpy as np
@@ -23,6 +23,11 @@ class Report:
         self.report = pd.DataFrame(
             classification_report(ground_truth, flat_result, output_dict=True)
         ).transpose()
+
+
+        neptune.log_metric("f1", self.report["f1-score"]["False"])
+        neptune.log_metric("precision", self.report["precision"]["False"])
+        neptune.log_metric("recall", self.report["recall"]["False"])
 
         log_classification_report(ground_truth, flat_result)
 

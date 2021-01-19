@@ -1,12 +1,12 @@
 from pathlib import Path
-from kbclean.detection.active_transform.random_forest import RFDetector
+from kbclean.detection.active_transform.random_forest import RFDetector, XGBDetector
 import os
 import random
 import shutil
 import sys
 
 import click
-from kbclean.detection.active_transform import HoloDetector, LSTMDetector
+from kbclean.detection.active_transform import LSTMDetector
 from kbclean.evaluation import Evaluator
 from kbclean.utils.inout import load_config
 from loguru import logger
@@ -14,7 +14,7 @@ from loguru import logger
 import neptune
 
 neptune.init(
-    project_qualified_name="clapika/act",
+    project_qualified_name="clapika/ijcai-softlabel-30",
     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiYzYwZWY5ZjYtOTAxOS00MzhlLTlmY2EtZjRiMDkxNDhiYjQ3In0=",
 )
 
@@ -36,7 +36,7 @@ config = {
 }
 
 
-name2model = {"holo": HoloDetector, "lstm": LSTMDetector, "random_forest": RFDetector}
+name2model = {"lstm": LSTMDetector, "random_forest": RFDetector, "xgb": XGBDetector}
 
 logger.configure(**config)
 
@@ -84,7 +84,7 @@ def evaluate(data_path, config_path, output_path, method, interactive, num_gpus,
 
 
     if interactive:
-        evaluator.ievaluate(detector, method, data_path, output_path, k=k, num_examples=e)
+        evaluator.benchmark(detector, method, data_path, output_path, k=k, num_examples=e)
     else:
         evaluator.evaluate(detector, method, data_path, output_path)
 

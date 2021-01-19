@@ -1,26 +1,23 @@
-import os
-import random
 import time
 
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn.functional as F
-from kbclean.datasets.dataset import Dataset
-from kbclean.detection.active_transform.holo import HoloDetector
-from kbclean.detection.features.base import ConcatFeaturizer, UnionFeaturizer
+from kbclean.detection.base import ActiveDetector
+from kbclean.detection.features.base import ConcatFeaturizer
 from kbclean.detection.features.embedding import CharAvgFT, WordAvgFT
-from kbclean.detection.features.statistics import StatsFeaturizer
-from kbclean.transformation.error import Clean2ErrorGenerator, ErrorGenerator
-from kbclean.utils.data.helpers import split_train_test_dls, unzip_and_stack_tensors
+from kbclean.detection.features.statistics import StatsFeaturizer, TfidfFeaturizer
+from kbclean.transformation.error import ErrorGenerator
 from loguru import logger
 from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
-class RFDetector(HoloDetector):
+
+
+class RFDetector(ActiveDetector):
     def __init__(self, hparams):
         self.hparams = hparams
         self.feature_extractor = ConcatFeaturizer(
-            {"stats": StatsFeaturizer()}
+            {"char_ft": CharAvgFT(), "word_ft": WordAvgFT(), "stats": StatsFeaturizer()}
         )
         self.training = True
         self.model = RandomForestClassifier(class_weight="balanced")
@@ -44,12 +41,14 @@ class RFDetector(HoloDetector):
         except:
             pass
 
-    def idetect_col(self, dirty_df, label_df, col, pos_indices, neg_indices, pairs):
+    def idetect_col(self, dataset, col, pos_indices, neg_indices):
         generator = ErrorGenerator()
         start_time = time.time()
         self.training = True
+
+        logger.info("Transforming data ....")
         train_dirty_df, train_label_df, rules = generator.fit_transform(
-            dirty_df, label_df, col, pos_indices, neg_indices, pairs
+            dataset, col, pos_indices, neg_indices
         )
 
         output_pd = train_dirty_df[[col]].copy()
@@ -63,13 +62,14 @@ class RFDetector(HoloDetector):
             train_dirty_df, train_label_df, col
         )
 
+
         start_time = time.time()
         self.training = False
 
         self.model = RandomForestClassifier()
         self.model.fit(features, labels)
 
-        feature_tensors = self.extract_features(dirty_df, label_df, col)
+        feature_tensors = self.extract_features(dataset.dirty_df, None, col)
 
         pred = self.model.predict_proba(feature_tensors)
 
@@ -77,47 +77,85 @@ class RFDetector(HoloDetector):
 
         return pred[:, 1]
 
-    def idetect(
-        self, dirty_df: pd.DataFrame, label_df: pd.DataFrame, col2pairs,
-    ):
-        prediction_df = dirty_df.copy()
-
-        for col_i, col in enumerate(dirty_df.columns):
-            value_arr = label_df.iloc[:, col_i].values
+    def idetect(self, dataset: pd.DataFrame):
+        for col_i, col in enumerate(dataset.dirty_df.columns):
+            start_time = time.time()
+            value_arr = dataset.label_df.iloc[:, col_i].values
             neg_indices = np.where(np.logical_and(0 <= value_arr, value_arr <= 0.5))[
                 0
             ].tolist()
             pos_indices = np.where(value_arr >= 0.5)[0].tolist()
-            examples = [dirty_df[col][i] for i in neg_indices + pos_indices]
+            examples = [dataset.dirty_df[col][i] for i in neg_indices + pos_indices]
 
             logger.info(
                 f"Column {col} has {len(neg_indices)} negatives and {len(pos_indices)} positives"
             )
 
+            print('Preparation time: ', time.time() - start_time)
+
             if len(neg_indices) == 0:
-                logger.info(
-                    f"Skipping column {col} with {len(examples)} examples {list(set(examples))[:20]}"
+                dataset.prediction_df[col] = pd.Series(
+                    [1.0 for _ in range(len(dataset.dirty_df))]
                 )
-                prediction_df[col] = pd.Series([1.0 for _ in range(len(dirty_df))])
             else:
+                start_time = time.time()
                 logger.info(f"Detecting column {col} with {len(examples)} examples")
 
-                pd.DataFrame(col2pairs[col]).to_csv(f"{self.hparams.debug_dir}/{col}_chosen.csv")
+                # pd.DataFrame(dataset.col2labeled_pairs[col]).to_csv(
+                #     f"{self.hparams.debug_dir}/{col}_chosen.csv"
+                # )
 
-                logger.debug(
-                    f"{len(dirty_df[label_df[col] >= 0.5])} Positive values: {dirty_df[label_df[col] >= 0.5][col].values.tolist()[:20]}"
-                )
-                logger.debug(
-                    f"{len(dirty_df[label_df[col] <= 0.5])} Negative values: {dirty_df[label_df[col] <= 0.5][col].values.tolist()[:20]}"
-                )
-                outliers = self.idetect_col(
-                    dirty_df, label_df, col, pos_indices, neg_indices, col2pairs[col],
-                )
+                outliers = self.idetect_col(dataset, col, pos_indices, neg_indices)
 
-                df = pd.DataFrame(dirty_df[col].values)
+                df = pd.DataFrame(dataset.dirty_df[col].values)
                 df["result"] = outliers
-                df["training_label"] = label_df[col].values.tolist()
+                df["training_label"] = dataset.label_df[col].values.tolist()
                 df.to_csv(f"{self.hparams.debug_dir}/{col}_prediction.csv", index=None)
-                prediction_df[col] = pd.Series(outliers)
+                dataset.prediction_df[col] = pd.Series(outliers)
+                print('Training time: ', time.time() - start_time)
 
-        return prediction_df
+
+class XGBDetector(RFDetector):
+    def __init__(self, hparams):
+        super().__init__(hparams)
+        self.feature_extractor = ConcatFeaturizer(
+            {"char_ft": CharAvgFT(), "stats": TfidfFeaturizer()}
+        )
+        self.model = XGBClassifier()
+    
+
+    def idetect_col(self, dataset, col, pos_indices, neg_indices):
+        generator = ErrorGenerator()
+        start_time = time.time()
+        self.training = True
+
+        logger.info("Transforming data ....")
+        train_dirty_df, train_label_df, rules = generator.fit_transform(
+            dataset, col, pos_indices, neg_indices
+        )
+
+        output_pd = train_dirty_df[[col]].copy()
+        output_pd["label"] = train_label_df[col].values.tolist()
+        output_pd["rule"] = rules
+        output_pd.to_csv(f"{self.hparams.debug_dir}/{col}_debug.csv")
+
+        logger.info(f"Total transformation time: {time.time() - start_time}")
+
+        features, labels = self.extract_features(
+            train_dirty_df, train_label_df, col
+        )
+
+
+        start_time = time.time()
+        self.training = False
+
+        self.model = XGBClassifier()
+        self.model.fit(features, labels)
+
+        feature_tensors = self.extract_features(dataset.dirty_df, None, col)
+
+        pred = self.model.predict_proba(feature_tensors)
+
+        logger.info(f"Total prediction time: {time.time() - start_time}")
+
+        return pred[:, 1]

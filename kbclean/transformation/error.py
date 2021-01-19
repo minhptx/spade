@@ -358,20 +358,20 @@ class Clean2ErrorGenerator:
                         new_labels.append(0.0)
                         new_rules.append(str(rule))
                         break
-        elif row[f"{col}_labels"] > 0.5:
-            new_values.append(row[col])
-            new_labels.append(1.0)
-            new_rules.append("Not labeled example")
+        # elif row[f"{col}_weights"] > 0.5:
+        #     new_values.append(row[col])
+        #     new_labels.append(row[f"{col}_weights"])
+        #     new_rules.append("PSL inference score")
 
-            random.shuffle(rules)
-            for rule in rules:
-                if rule.validate(row[col]):
-                    result = rule.transform(row[col])
-                    if result not in pos_values:
-                        new_values.append(result)
-                        new_labels.append(0.0)
-                        new_rules.append(str(rule))
-                        break
+        #     random.shuffle(rules)
+        #     for rule in rules:
+        #         if rule.validate(row[col]):
+        #             result = rule.transform(row[col])
+        #             if result not in pos_values:
+        #                 new_values.append(result)
+        #                 new_labels.append(0.0)
+        #                 new_rules.append(str(rule))
+        #                 break        
         row[col] = new_values
         row["new_labels"] = new_labels
         row["new_rules"] = new_rules
@@ -407,7 +407,7 @@ class Clean2ErrorGenerator:
         new_label_df[col] = new_dirty_df["new_labels"]
         new_rules = new_dirty_df["new_rules"]
 
-        new_dirty_df = new_dirty_df.drop(["new_labels", "new_rules"], axis=1)
+        new_dirty_df = new_dirty_df.drop(["new_labels", "new_rules", f"{col}_labels", f"{col}_weights"], axis=1)
         new_dirty_df = new_dirty_df.explode(col)
         new_label_df = new_label_df.explode(col)
         new_rules = [x for rules in new_rules for x in rules]
