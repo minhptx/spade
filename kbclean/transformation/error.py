@@ -14,7 +14,7 @@ import regex as re
 import swifter
 from kbclean.datasets.dataset import Dataset
 from loguru import logger
-from strsimpy.jaccard import Jaccard
+from functools import partial
 
 SOS = "^"
 EOS = "$"
@@ -358,10 +358,10 @@ class Clean2ErrorGenerator:
                         new_labels.append(0.0)
                         new_rules.append(str(rule))
                         break
-        # elif row[f"{col}_weights"] > 0.5:
+        # elif row[f"{col}_labels"] > 0.5:
         #     new_values.append(row[col])
-        #     new_labels.append(row[f"{col}_weights"])
-        #     new_rules.append("PSL inference score")
+        #     new_labels.append(1.0)
+        #     new_rules.append("Not labeled example")
 
         #     random.shuffle(rules)
         #     for rule in rules:
@@ -393,13 +393,15 @@ class Clean2ErrorGenerator:
         new_dirty_df[f"{col}_labels"] = new_label_df[col]
         new_dirty_df[f"{col}_weights"] = dataset.soft_label_df[col]
 
-        new_dirty_df = new_dirty_df.swifter.allow_dask_on_strings(True).apply(
-            self.sub_transform,
-            axis=1,
-            raw=False,
-            args=[col, pos_indices, neg_indices, pos_values],
+        partial_transform = partial(self.sub_transform, col=col, pos_indices=pos_indices, neg_indices=neg_indices, pos_values=pos_values)
+
+        new_dirty_df = new_dirty_df.parallel_apply(
+            partial_transform,
+            axis=1
         )
-        new_dirty_df[col] = new_dirty_df[col].apply(lambda x: np.nan if len(x) == 0 else x)
+        new_dirty_df[col] = new_dirty_df[col].apply(
+            lambda x: np.nan if len(x) == 0 else x
+        )
         new_dirty_df = new_dirty_df.dropna()
 
         new_label_df = new_label_df.iloc[new_dirty_df.index.tolist()]
@@ -407,7 +409,7 @@ class Clean2ErrorGenerator:
         new_label_df[col] = new_dirty_df["new_labels"]
         new_rules = new_dirty_df["new_rules"]
 
-        new_dirty_df = new_dirty_df.drop(["new_labels", "new_rules", f"{col}_labels", f"{col}_weights"], axis=1)
+        new_dirty_df = new_dirty_df.drop(["new_labels", "new_rules"], axis=1)
         new_dirty_df = new_dirty_df.explode(col)
         new_label_df = new_label_df.explode(col)
         new_rules = [x for rules in new_rules for x in rules]

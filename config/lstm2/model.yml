@@ -1,4 +1,0 @@
-batch_size: 134
-lr: 0.0005
-num_epochs: 30
-char_hid_dim: 10

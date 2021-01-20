@@ -1,3 +1,4 @@
+import neptune
 from kbclean.recommendation.feedback.oracle import Oracle
 from operator import index
 from pathlib import Path
@@ -65,7 +66,6 @@ class PSLearner:
 
         self.oracle = Oracle(dataset)
 
-        self.es_query = ESQuery.get_instance(hparams.es_host, hparams.es_port)
         self.data_path = hparams.psl_data_path
 
         self.col2label_model = {
@@ -79,7 +79,7 @@ class PSLearner:
                 (f"fasttext_typo", FastTextChecker()),
                 (f"dict_typo", DictTypoChecker()),
                 (f"char", CharChecker()),
-                ("web", WebTableBoolChecker(self.es_query)),
+                ("web", WebTableBoolChecker(self.hparams.bigram_path)),
                 (f"char_format", CharFormatChecker()),
                 (f"word_format", WordFormatChecker()),
                 (f"punct_format", PunctFormatChecker()),
@@ -118,7 +118,16 @@ class PSLearner:
 
         feature_matrix = np.concatenate(feature_arrs, axis=1).astype(float)
         col_feature_df = pd.DataFrame(feature_matrix, dtype=str, columns=self.feature_names)
-        col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 2))).agg("|||".join, axis=1)
+        neptune.log_text("propagate_level", str(self.hparams.propagate_level))
+        if self.hparams.propagate_level == 1:
+            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 2))).agg("|||".join, axis=1)
+        elif self.hparams.propagate_level == 2:
+            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 3))).agg("|||".join, axis=1)
+        elif self.hparams.propagate_level == 3:
+            print("333333333")
+            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x) / 2, 2))).agg("|||".join, axis=1)
+        elif self.hparams.propagate_level == 4:
+            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x) * 2, 2))).agg("|||".join, axis=1)   
         col_feature_df["value"] = self.dataset.dirty_df[col]
 
         self.col2feature_df[col] = col_feature_df
@@ -163,7 +172,6 @@ class PSLearner:
 
         result = self.col2label_model[col].infer(cleanup_temp=True)
         result = {pred.name(): values for pred, values in result.items()}
-        print(result)
         target_result = result["TARGET"]
         target_result = target_result.sort_values(by=[0])
         target_result["value"] = target_result[0].apply(lambda x: self.dataset.dirty_df.loc[int(x), col])
@@ -213,8 +221,6 @@ class PSLearner:
                     self.dataset.soft_label_df.loc[row_i, col] = float(label)
                 elif self.dataset.label_df.loc[row_i, col] == -1:
                     self.dataset.label_df.loc[row_i, col] = float(label)
-                    self.dataset.soft_label_df.loc[row_i, col] = float(label)
-
 
     def fit_predict(self, col, num_examples):
         if any(self.dataset.label_df[col] == -1):

@@ -128,7 +128,7 @@ class WebTableBoolChecker(ErrorChecker):
                 return 0
             tokens = [x for x in xngrams(value, 2, False)]
             if tokens:
-                return min([self.bigram_dict.get(x, 100000) for x in tokens])
+                return min([self.bigram_dict.get(x, 0) for x in tokens])
             else:
                 return 100000
         return (

@@ -84,14 +84,12 @@ class MetalLeaner:
         if all(label_df[col] == -1):
             for name, criterion, threshold in self.col2criteria[col]:
                 start_time = time.time()
-                print(name)
                 val_arr = criterion.fit_transform(self.dirty_df, col)
                 for threshold in threshold:
                     feature_arr = val_arr >= threshold
                     feature_df[f"{threshold}_{name}"] = feature_arr
 
                     feature_arrs.append(feature_arr.reshape(-1, 1))
-                print(name, criterion, time.time() - start_time)
             self.col2features[col] = feature_arrs
             feature_df.to_csv(f"{self.hparams.debug_dir}/{col}_feature.csv")
         else:

@@ -10,6 +10,7 @@ from kbclean.transformation.error import ErrorGenerator
 from loguru import logger
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
+from sklearn.svm import SVC
 
 
 
@@ -106,6 +107,13 @@ class RFDetector(ActiveDetector):
                 # )
 
                 outliers = self.idetect_col(dataset, col, pos_indices, neg_indices)
+                outliers[
+                    np.where(dataset.soft_label_df.loc[:, col].values == 1)[0]
+                ] = 1
+                outliers[
+                    np.where(dataset.soft_label_df.loc[:, col].values == 0)[0]
+                ] = 0
+
 
                 df = pd.DataFrame(dataset.dirty_df[col].values)
                 df["result"] = outliers
@@ -119,7 +127,7 @@ class XGBDetector(RFDetector):
     def __init__(self, hparams):
         super().__init__(hparams)
         self.feature_extractor = ConcatFeaturizer(
-            {"char_ft": CharAvgFT(), "stats": TfidfFeaturizer()}
+            {"char_ft": CharAvgFT(), "word_ft": WordAvgFT(), "stats": StatsFeaturizer()}
         )
         self.model = XGBClassifier()
     
@@ -150,6 +158,52 @@ class XGBDetector(RFDetector):
         self.training = False
 
         self.model = XGBClassifier()
+        self.model.fit(features, labels)
+
+        feature_tensors = self.extract_features(dataset.dirty_df, None, col)
+
+        pred = self.model.predict_proba(feature_tensors)
+
+        logger.info(f"Total prediction time: {time.time() - start_time}")
+
+        return pred[:, 1]
+
+
+class SVMDetector(RFDetector):
+    def __init__(self, hparams):
+        super().__init__(hparams)
+        self.feature_extractor = ConcatFeaturizer(
+            {"char_ft": CharAvgFT(), "word_ft": WordAvgFT(), "stats": StatsFeaturizer()}
+        )
+        self.model = SVC()
+    
+
+    def idetect_col(self, dataset, col, pos_indices, neg_indices):
+        generator = ErrorGenerator()
+        start_time = time.time()
+        self.training = True
+
+        logger.info("Transforming data ....")
+        train_dirty_df, train_label_df, rules = generator.fit_transform(
+            dataset, col, pos_indices, neg_indices
+        )
+
+        output_pd = train_dirty_df[[col]].copy()
+        output_pd["label"] = train_label_df[col].values.tolist()
+        output_pd["rule"] = rules
+        output_pd.to_csv(f"{self.hparams.debug_dir}/{col}_debug.csv")
+
+        logger.info(f"Total transformation time: {time.time() - start_time}")
+
+        features, labels = self.extract_features(
+            train_dirty_df, train_label_df, col
+        )
+
+
+        start_time = time.time()
+        self.training = False
+
+        self.model = SVC()
         self.model.fit(features, labels)
 
         feature_tensors = self.extract_features(dataset.dirty_df, None, col)

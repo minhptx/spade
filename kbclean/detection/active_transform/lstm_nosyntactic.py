@@ -55,10 +55,10 @@ class LSTMModel(LightningModule):
             nn.Linear(self.hparams.reduce_dim * len(self.hparams.feature_dims), 1,),
         )
 
-    def forward(self, words, chars, statistics):
+    def forward(self, words, chars):
         concat_inputs = []
 
-        for idx, inputs in enumerate([words, chars, statistics]):
+        for idx, inputs in enumerate([words, chars]):
             concat_inputs.append(self.reducers[idx](inputs.float()))
 
         attn_outputs = torch.cat(concat_inputs, dim=1)
@@ -69,13 +69,13 @@ class LSTMModel(LightningModule):
         return torch.sigmoid(self.model(attn_outputs.float()))
 
     def training_step(self, batch, batch_idx):
-        (words, chars, features, labels) = batch
+        (words, chars, labels) = batch
         labels = labels.view(-1, 1)
         weights = torch.zeros_like(labels).type_as(labels).float()
         weights[labels <= 0.5] = (labels >= 0.5).sum().float() / labels.shape[0]
         weights[labels >= 0.5] = (labels <= 0.5).sum().float() / labels.shape[0]
 
-        probs = self.forward(words, chars, features)
+        probs = self.forward(words, chars)
 
         loss = F.binary_cross_entropy(probs, labels.float())
         preds = probs >= 0.5
@@ -87,13 +87,13 @@ class LSTMModel(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        (words, chars, features, labels) = batch
+        (words, chars, labels) = batch
         labels = labels.view(-1, 1)
         weights = torch.zeros_like(labels).type_as(labels).float()
         weights[labels <= 0.5] = (labels >= 0.5).sum().float() / labels.shape[0]
         weights[labels >= 0.5] = (labels <= 0.5).sum().float() / labels.shape[0]
 
-        probs = self.forward(words, chars, features)
+        probs = self.forward(words, chars)
 
         loss = F.binary_cross_entropy(probs, labels.float())
         preds = probs >= 0.5
@@ -106,11 +106,11 @@ class LSTMModel(LightningModule):
         return [optim.AdamW(self.parameters(), lr=self.hparams.lr)], []
 
 
-class LSTMDetector(ActiveDetector):
+class LSTM2Detector(ActiveDetector):
     def __init__(self, hparams):
         self.hparams = hparams
         self.feature_extractor = UnionFeaturizer(
-            {"word": WordAvgFT(), "char": CharAvgFT(), "stats": StatsFeaturizer()}
+            {"word": WordAvgFT(), "char": CharAvgFT()}
         )
         self.training = True
 

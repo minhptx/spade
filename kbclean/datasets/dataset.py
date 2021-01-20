@@ -19,7 +19,7 @@ class Dataset:
             -1, columns=self.dirty_df.columns, index=self.dirty_df.index
         )
         self.soft_label_df = pd.DataFrame(
-            1, columns=self.dirty_df.columns, index=self.dirty_df.index
+            -1, columns=self.dirty_df.columns, index=self.dirty_df.index
         )
 
         self.prediction_df = pd.DataFrame(

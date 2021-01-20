@@ -26,8 +26,8 @@ class Report:
 
 
         neptune.log_metric("f1", self.report["f1-score"]["False"])
-        neptune.log_metric("precision", self.report["precision"]["False"])
-        neptune.log_metric("recall", self.report["recall"]["False"])
+        neptune.log_metric("p", self.report["precision"]["False"])
+        neptune.log_metric("r", self.report["recall"]["False"])
 
         log_classification_report(ground_truth, flat_result)
 

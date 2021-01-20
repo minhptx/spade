@@ -1,6 +1,7 @@
 import csv
+
+import neptune
 from kbclean.recommendation.psl import PSLearner
-from kbclean.recommendation.psl_cluster import PSL2earner
 from kbclean.datasets.dataset import Dataset
 import time
 from collections import defaultdict
@@ -86,7 +87,7 @@ class Evaluator:
 
             if detector.hparams.combine_method == "metal":
                 recommender = MetalLeaner(self.name2dataset[name], detector.hparams)
-            elif detector.hparams.combine_method == "psl":
+            else:
                 recommender = PSLearner(self.name2dataset[name], detector.hparams)
 
             print("Loading Metal time", time.time() - start_time)
@@ -142,6 +143,7 @@ class Evaluator:
         output_path = Path(output_path)
         self.read_dataset(dataset_path)
         running_times = []
+        active_times = []
         name2ireport = [{} for _ in range(k)]
 
         for name, dataset in self.name2dataset.items():
@@ -167,11 +169,13 @@ class Evaluator:
 
                 running_time = time.time() - start_time
                 logger.info(f"Total recommendation time for step {i}: {running_time}")
+                active_times.append(running_time)
 
+            start_time = time.time()
             report = self.ievaluate_df(detector, self.name2dataset[name])
 
             logger.info(
-                f"Total running time for step {i}: {time.time() - start_time}"
+                f"Total running time: {time.time() - start_time}"
             )
 
             running_times.append(time.time() - start_time)
@@ -203,4 +207,7 @@ class Evaluator:
                 )
                 logger.info(f"Step {i} average report:\n{avg_report}")
                 logger.info(f"Mean running time: {np.mean(running_times)}")
+                neptune.log_metric('training time', running_times[i])
+            logger.info(f"Mean active time: {active_times[i]}")
+            neptune.log_metric('active time {i}', active_times[i])
         return name2ireport[k - 1]
