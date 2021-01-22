@@ -1,4 +1,3 @@
-from kbclean.detection.base import ActiveDetector
 import os
 import random
 import time
@@ -7,6 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from kbclean.detection.base import ActiveDetector
 from kbclean.detection.features.base import UnionFeaturizer
 from kbclean.detection.features.embedding import CharAvgFT, WordAvgFT
 from kbclean.detection.features.statistics import StatsFeaturizer, TfidfFeaturizer
@@ -236,12 +236,8 @@ class LSTMDetector(ActiveDetector):
                 )
 
                 outliers = self.idetect_col(dataset, col, pos_indices, neg_indices)
-                outliers[
-                    np.where(dataset.soft_label_df.loc[:, col].values == 1)[0]
-                ] = 1
-                outliers[
-                    np.where(dataset.soft_label_df.loc[:, col].values == 0)[0]
-                ] = 0
+                outliers[np.where(dataset.soft_label_df.loc[:, col].values == 1)[0]] = 1
+                outliers[np.where(dataset.soft_label_df.loc[:, col].values == 0)[0]] = 0
 
                 df = pd.DataFrame(dataset.dirty_df[col].values)
                 df["result"] = outliers

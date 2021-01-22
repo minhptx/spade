@@ -1,0 +1,8 @@
+10: !target(P) ^2 
+100: has_label(P, "positive") & has_signal(P, S) -> bad_signal(S) ^2
+100: has_label(P, "negative") & has_signal(P, S) -> !bad_signal(S) ^2
+100: has_signal(P, S) & !bad_signal(S) -> target(P) ^2
+100: has_signal(P, S) & bad_signal(S) -> !target(P) ^2
+has_label(P, "negative") -> target(P) .
+has_label(P, "positive") -> !target(P) .
+has_label(P, +L) = 1 .   

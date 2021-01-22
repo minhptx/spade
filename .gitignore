@@ -20,7 +20,7 @@ data/
 debug/
 output/
 logs/
-psl/
+psl/data/
 
 
 *.model

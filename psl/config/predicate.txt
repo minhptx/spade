@@ -1,0 +1,4 @@
+has_signal/closed/2
+bad_signal/open/1
+has_label/closed/2
+target/open/1
