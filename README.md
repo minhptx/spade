@@ -2,7 +2,7 @@ SPADE: A Semi-supervised Probabilistic Approach for Detecting Errors in Tables
 -----------------------------------------------------------------------------
 ## Setting Up
 ```
-pip install -r requirements.txt
+cat requirements.txt | xargs -n 1 pip install
 ```
 ## Running Experiments
 

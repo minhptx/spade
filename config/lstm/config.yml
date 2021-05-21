@@ -1,5 +1,5 @@
 psl_config_path: psl/config # path to psl models
 psl_data_path: psl/data # path to psl data file
 bigram_path: data/train/bigram_count.csv # path to Web table analysis file (included in data/)
-combine_method: psl
+combine_method: psl_cluster
 propagate_level: 1 # (epsilon values. see ReadMe for actual values)

@@ -17,48 +17,18 @@ from kbclean.recommendation.checker.typo import (
     FastTextChecker, WebTableBoolChecker,
     WebTableChecker,
 )
+from kbclean.recommendation.psl import PSLearner, PSLUtils
 from kbclean.utils.search.query import ESQuery
 from pslpython.model import Model
 from pslpython.predicate import Predicate
 from pslpython.rule import Rule
 from pslpython.partition import Partition
+from sklearn.cluster import Birch
 import pandas as pd
 import numpy as np
 import time
 
-
-class PSLUtils:
-    @staticmethod
-    def create_model_from_config_dir(name, dir_path):
-        dir_path = Path(dir_path)
-
-        predicate_path = dir_path / "predicate.txt"
-        rule_path = dir_path / "rule.txt"
-
-        model = Model(name)
-
-        for predicate in PSLUtils.read_predicates_from_file(predicate_path):
-            model.add_predicate(predicate)
-
-        for rule in PSLUtils.read_rules_from_file(rule_path):
-            model.add_rule(rule)
-
-        return model
-
-    @staticmethod
-    def read_predicates_from_file(predicate_path):
-        for line in predicate_path.open("r").readlines():
-            name, closed, size = line.split("/")
-
-            yield Predicate(name, closed == "closed", int(size))
-
-    @staticmethod
-    def read_rules_from_file(predicate_path):
-        for line in predicate_path.open("r").readlines():
-            yield Rule(line)
-
-
-class PSLearner:
+class PSLClusterLearner(PSLearner):
     def __init__(self, dataset, hparams):
         self.hparams = hparams
 
@@ -86,7 +56,6 @@ class PSLearner:
             ]
             for col in self.dataset.dirty_df.columns
         }
-
         self.col2feature_df = {}
 
     def generate_feature_files(self, col):
@@ -119,14 +88,8 @@ class PSLearner:
         feature_matrix = np.concatenate(feature_arrs, axis=1).astype(float)
         col_feature_df = pd.DataFrame(feature_matrix, dtype=str, columns=self.feature_names)
         neptune.log_text("propagate_level", str(self.hparams.propagate_level))
-        if self.hparams.propagate_level == 1:
-            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 2))).agg("|||".join, axis=1)
-        elif self.hparams.propagate_level == 2:
-            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 3))).agg("|||".join, axis=1)
-        elif self.hparams.propagate_level == 3:
-            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x) / 2, 2))).agg("|||".join, axis=1)
-        elif self.hparams.propagate_level == 4:
-            col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x) * 2, 2))).agg("|||".join, axis=1)   
+        col_feature_df["feature_str"] = self.cluster_model.fit_predict(feature_matrix)
+
         col_feature_df["value"] = self.dataset.dirty_df[col]
 
         self.col2feature_df[col] = col_feature_df
@@ -239,5 +202,7 @@ class PSLearner:
         self.fit_predict(col, num_examples)
 
     def next(self, num_examples):
+        self.cluster_model = Birch(n_clusters=num_examples * 2)
+
         for col in self.dataset.dirty_df.columns:
             self.next_for_col(col, num_examples)
