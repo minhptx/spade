@@ -1,0 +1,234 @@
+2021-01-20T17:06:09.492063-0800 - ==========================================================================
+2021-01-20T17:08:56.931214-0800 - ==========================================================================
+2021-01-20T17:10:53.840754-0800 - ==========================================================================
+2021-01-20T17:10:56.436550-0800 - Evaluating on flights...
+2021-01-20T17:10:57.591256-0800 - ----------------------------------------------------
+2021-01-20T17:10:57.591452-0800 - Running active learning step 0...
+2021-01-20T17:11:40.999492-0800 - ==========================================================================
+2021-01-20T17:11:44.079653-0800 - Evaluating on flights...
+2021-01-20T17:11:45.313187-0800 - ----------------------------------------------------
+2021-01-20T17:11:45.313421-0800 - Running active learning step 0...
+2021-01-20T17:13:16.536273-0800 - ==========================================================================
+2021-01-20T17:13:19.211161-0800 - Evaluating on beers...
+2021-01-20T17:13:20.094583-0800 - ----------------------------------------------------
+2021-01-20T17:13:20.094784-0800 - Running active learning step 0...
+2021-01-20T17:52:15.845278-0800 - ==========================================================================
+2021-01-20T17:55:40.274154-0800 - ==========================================================================
+2021-01-20T17:55:41.978072-0800 - Evaluating on beers...
+2021-01-20T17:55:42.830685-0800 - ----------------------------------------------------
+2021-01-20T17:55:42.830848-0800 - Running active learning step 0...
+2021-01-20T17:55:47.670576-0800 - Example 0 of column index: 1486 with score 0.0015019805869087575, label 1 and clean value '1486'
+2021-01-20T17:55:47.887369-0800 - Example 1 of column index: 778 with score 0.0014896584907546642, label 1 and clean value '778'
+2021-01-20T17:55:48.020670-0800 - Example 2 of column index: 3 with score 0.0005081189447082579, label 1 and clean value '3'
+2021-01-20T17:55:48.059285-0800 - Example 3 of column index: 10 with score 0.0, label 1 and clean value '10'
+2021-01-20T17:55:48.107984-0800 - Example 4 of column index: 2046 with score -9.998533281846903, label 1 and clean value '2046'
+2021-01-20T17:55:53.091494-0800 - Example 0 of column id: 1080 with score 0.0014984112931415439, label 1 and clean value '1080'
+2021-01-20T17:55:53.439506-0800 - Example 1 of column id: 874 with score 0.0014959110412746668, label 1 and clean value '874'
+2021-01-20T17:55:53.617360-0800 - Example 2 of column id: 1 with score 0.001078978762961924, label 1 and clean value '1'
+2021-01-20T17:55:53.680355-0800 - Example 3 of column id: 11 with score 0.0, label 1 and clean value '11'
+2021-01-20T17:55:53.755403-0800 - Example 4 of column id: 1219 with score -9.998511968413368, label 1 and clean value '1219'
+2021-01-20T17:55:59.415143-0800 - Example 0 of column beer_name: Oasis with score 0.0036971783265471463, label 1 and clean value 'Oasis'
+2021-01-20T17:55:59.438684-0800 - Example 1 of column beer_name: Boxer Ice with score 0.00364824291318655, label 1 and clean value 'Boxer Ice'
+2021-01-20T17:55:59.479843-0800 - Example 2 of column beer_name: Point Special with score 0.003096394240856171, label 1 and clean value 'Point Special'
+2021-01-20T17:55:59.523339-0800 - Example 3 of column beer_name: Bronx Pale Ale with score 0.002912190277129412, label 1 and clean value 'Bronx Pale Ale'
+2021-01-20T17:55:59.573225-0800 - Example 4 of column beer_name: Wind River Blonde Ale with score 0.002732161898165941, label 1 and clean value 'Wind River Blonde Ale'
+2021-01-20T17:56:04.535760-0800 - Example 0 of column style: Munich Helles Lager with score 0.002877045422792435, label 1 and clean value 'Munich Helles Lager'
+2021-01-20T17:56:04.547070-0800 - Example 1 of column style: Irish Red Ale with score 0.002774852095171809, label 1 and clean value 'Irish Red Ale'
+2021-01-20T17:56:04.560668-0800 - Example 2 of column style: Light Lager with score 0.0027266931720077987, label 1 and clean value 'Light Lager'
+2021-01-20T17:56:04.568840-0800 - Example 3 of column style: English Pale Ale with score 0.002667211927473545, label 1 and clean value 'English Pale Ale'
+2021-01-20T17:56:04.577595-0800 - Example 4 of column style: Belgian Strong Pale Ale with score 0.00258694589138031, label 1 and clean value 'Belgian Strong Pale Ale'
+2021-01-20T17:56:09.519169-0800 - Example 0 of column ounces: 12.0 oz with score 0.003565979190170765, label 0 and clean value '12'
+2021-01-20T17:56:09.607559-0800 - Example 1 of column ounces: 12.0 oz. with score 0.0033722221851348877, label 0 and clean value '12'
+2021-01-20T17:56:09.745389-0800 - Example 2 of column ounces: 12.0 ounce with score 0.003127596573904157, label 0 and clean value '12'
+2021-01-20T17:56:09.862679-0800 - Example 3 of column ounces: 16.0 oz. with score 0.0031061063054949045, label 0 and clean value '16'
+2021-01-20T17:56:09.946798-0800 - Example 4 of column ounces: 16.0 ounce with score 0.003066975856199861, label 0 and clean value '16'
+2021-01-20T17:56:14.933649-0800 - Example 0 of column abv: 0.044 with score 0.002940814709290862, label 1 and clean value '0.044'
+2021-01-20T17:56:15.007909-0800 - Example 1 of column abv: 0.073 with score 0.0028704507276415825, label 1 and clean value '0.073'
+2021-01-20T17:56:15.038741-0800 - Example 2 of column abv: 0.051% with score 0.0025554003659635787, label 0 and clean value '0.051'
+2021-01-20T17:56:15.073474-0800 - Example 3 of column abv: 0.07 with score 0.0023797554895281787, label 1 and clean value '0.07'
+2021-01-20T17:56:15.095510-0800 - Example 4 of column abv: 0.055 with score 0.0023542011622339487, label 1 and clean value '0.055'
+2021-01-20T17:56:19.828794-0800 - Example 0 of column ibu: 37 with score 0.0027668001130223274, label 1 and clean value '37'
+2021-01-20T17:56:19.866466-0800 - Example 1 of column ibu: 24 with score 0.0020175941754132514, label 1 and clean value '24'
+2021-01-20T17:56:19.932674-0800 - Example 2 of column ibu: 45 with score 0.001993866404518485, label 1 and clean value '45'
+2021-01-20T17:56:20.005382-0800 - Example 3 of column ibu: 20 with score 0.0019501644419506192, label 1 and clean value '20'
+2021-01-20T17:56:20.037631-0800 - Example 4 of column ibu: N/A with score 0.0009871457004919648, label 0 and clean value ''
+2021-01-20T17:56:24.862803-0800 - Example 0 of column brewery_id: 107 with score 0.0032361384946852922, label 1 and clean value '107'
+2021-01-20T17:56:24.928963-0800 - Example 1 of column brewery_id: 82 with score 0.002852684585377574, label 1 and clean value '82'
+2021-01-20T17:56:24.962862-0800 - Example 2 of column brewery_id: 206 with score 0.0022568735294044018, label 1 and clean value '206'
+2021-01-20T17:56:25.166450-0800 - Example 3 of column brewery_id: 17 with score 0.0018677301704883573, label 1 and clean value '17'
+2021-01-20T17:56:25.237266-0800 - Example 4 of column brewery_id: 10 with score 0.0017548799514770508, label 1 and clean value '10'
+2021-01-20T17:56:30.264451-0800 - Example 0 of column brewery_name: Wachusett Brewing Company with score 0.0033250004053115845, label 1 and clean value 'Wachusett Brewing Company'
+2021-01-20T17:56:30.269047-0800 - Example 1 of column brewery_name: Karbach Brewing Company with score 0.0032727306243032213, label 1 and clean value 'Karbach Brewing Company'
+2021-01-20T17:56:30.276378-0800 - Example 2 of column brewery_name: Manayunk Brewing Company with score 0.003181936452165246, label 1 and clean value 'Manayunk Brewing Company'
+2021-01-20T17:56:30.284422-0800 - Example 3 of column brewery_name: Uinta Brewing Company with score 0.003140285843983293, label 1 and clean value 'Uinta Brewing Company'
+2021-01-20T17:56:30.288232-0800 - Example 4 of column brewery_name: Deep Ellum Brewing Company with score 0.003066565841436386, label 1 and clean value 'Deep Ellum Brewing Company'
+2021-01-20T17:56:34.970723-0800 - Example 0 of column city: San Luis Obispo CA with score 0.006021326873451471, label 0 and clean value 'San Luis Obispo'
+2021-01-20T17:56:34.972764-0800 - Example 1 of column city: Fuquay-Varina with score 0.005817790050059557, label 1 and clean value 'Fuquay-Varina'
+2021-01-20T17:56:34.975607-0800 - Example 2 of column city: Bucryus with score 0.005791616160422564, label 1 and clean value 'Bucryus'
+2021-01-20T17:56:34.979160-0800 - Example 3 of column city: Mt. Airy with score 0.005756914149969815, label 1 and clean value 'Mt. Airy'
+2021-01-20T17:56:34.985329-0800 - Example 4 of column city: Fredericksburg with score 0.0056686708703637114, label 1 and clean value 'Fredericksburg'
+2021-01-20T17:56:39.729661-0800 - Example 0 of column state:  with score 0.004166482947766781, label 0 and clean value 'VA'
+2021-01-20T17:56:39.775226-0800 - Example 1 of column state: AL with score 0.002319854218512773, label 1 and clean value 'AL'
+2021-01-20T17:56:39.785545-0800 - Example 2 of column state: TX with score 0.0016341961454600096, label 1 and clean value 'TX'
+2021-01-20T17:56:39.822439-0800 - Example 3 of column state: NC with score 0.0015510503435507415, label 1 and clean value 'NC'
+2021-01-20T17:56:39.873048-0800 - Example 4 of column state: SC with score 0.0013697425602003932, label 1 and clean value 'SC'
+2021-01-20T17:56:39.910037-0800 - Total recommendation time for step 0: 57.079346656799316
+2021-01-20T17:56:39.927759-0800 - Column index has 0 negatives and 2410 positives
+2021-01-20T17:56:39.945102-0800 - Column id has 0 negatives and 2410 positives
+2021-01-20T17:56:39.952898-0800 - Column beer_name has 0 negatives and 986 positives
+2021-01-20T17:56:39.955042-0800 - Column style has 0 negatives and 145 positives
+2021-01-20T17:56:39.968467-0800 - Column ounces has 1862 negatives and 0 positives
+2021-01-20T17:56:39.968631-0800 - Detecting column ounces with 1862 examples
+2021-01-20T17:56:39.971449-0800 - Transforming data ....
+2021-01-20T17:56:44.923771-0800 - Training set have size 3734 with 0 positives and 0 transformed negative
+2021-01-20T17:56:44.926979-0800 - Total transformation time: 4.9555206298828125
+2021-01-20T18:05:39.310697-0800 - ==========================================================================
+2021-01-20T18:05:41.986632-0800 - Evaluating on beers...
+2021-01-20T18:05:42.854251-0800 - ----------------------------------------------------
+2021-01-20T18:05:42.854500-0800 - Running active learning step 0...
+2021-01-20T18:05:48.073845-0800 - Example 0 of column index: 2289 with score 0.0016088858246803286, label 1 and clean value '2289'
+2021-01-20T18:05:48.289034-0800 - Example 1 of column index: 494 with score 0.0015969084342941642, label 1 and clean value '494'
+2021-01-20T18:05:48.419429-0800 - Example 2 of column index: 8 with score 0.0006435481482185423, label 1 and clean value '8'
+2021-01-20T18:05:48.456102-0800 - Example 3 of column index: 10 with score 0.0, label 1 and clean value '10'
+2021-01-20T18:05:48.503082-0800 - Example 4 of column index: 1782 with score -9.998396969283931, label 1 and clean value '1782'
+2021-01-20T18:05:53.867557-0800 - Example 0 of column id: 1998 with score 0.0012999932514503598, label 1 and clean value '1998'
+2021-01-20T18:05:54.077501-0800 - Example 1 of column id: 169 with score 0.0010654255747795103, label 1 and clean value '169'
+2021-01-20T18:05:54.271924-0800 - Example 2 of column id: 9 with score 0.0009277984499931335, label 1 and clean value '9'
+2021-01-20T18:05:54.335688-0800 - Example 3 of column id: 11 with score 0.0, label 1 and clean value '11'
+2021-01-20T18:05:54.417725-0800 - Example 4 of column id: 1692 with score -9.998728619073518, label 1 and clean value '1692'
+2021-01-20T18:06:00.183814-0800 - Example 0 of column beer_name: Blazing World with score 0.00404352368786931, label 1 and clean value 'Blazing World'
+2021-01-20T18:06:00.220026-0800 - Example 1 of column beer_name: Weisse Versa with score 0.003265192499384284, label 1 and clean value 'Weisse Versa'
+2021-01-20T18:06:00.231043-0800 - Example 2 of column beer_name: Chaka with score 0.003235013922676444, label 1 and clean value 'Chaka'
+2021-01-20T18:06:00.251465-0800 - Example 3 of column beer_name: Jucundus with score 0.0029827123507857323, label 1 and clean value 'Jucundus'
+2021-01-20T18:06:00.265648-0800 - Example 4 of column beer_name: Sex and Candy with score 0.00268919300287962, label 1 and clean value 'Sex and Candy'
+2021-01-20T18:06:05.559553-0800 - Example 0 of column style: Light Lager with score 0.002836185274645686, label 1 and clean value 'Light Lager'
+2021-01-20T18:06:05.569510-0800 - Example 1 of column style: Irish Red Ale with score 0.0027876331005245447, label 1 and clean value 'Irish Red Ale'
+2021-01-20T18:06:05.588227-0800 - Example 2 of column style: Winter Warmer with score 0.0027537515852600336, label 1 and clean value 'Winter Warmer'
+2021-01-20T18:06:05.635741-0800 - Example 3 of column style: Milk / Sweet Stout with score 0.0027431414928287268, label 1 and clean value 'Milk / Sweet Stout'
+2021-01-20T18:06:05.649526-0800 - Example 4 of column style: Gose with score 0.002741034375503659, label 1 and clean value 'Gose'
+2021-01-20T18:06:10.668120-0800 - Example 0 of column ounces: 12.0 oz with score 0.005058430600911379, label 0 and clean value '12'
+2021-01-20T18:06:10.722235-0800 - Example 1 of column ounces: 12.0 oz. with score 0.004845321178436279, label 0 and clean value '12'
+2021-01-20T18:06:10.808632-0800 - Example 2 of column ounces: 16.0 oz. with score 0.0048272255808115005, label 0 and clean value '16'
+2021-01-20T18:06:10.868128-0800 - Example 3 of column ounces: 16.0 oz with score 0.004744553938508035, label 0 and clean value '16'
+2021-01-20T18:06:10.919170-0800 - Example 4 of column ounces: 16.0 ounce with score 0.00457922974601388, label 0 and clean value '16'
+2021-01-20T18:06:15.858967-0800 - Example 0 of column abv:  with score 0.00748076569288969, label 1 and clean value ''
+2021-01-20T18:06:15.868360-0800 - Example 1 of column abv: 0.047% with score 0.003347615012899041, label 0 and clean value '0.047'
+2021-01-20T18:06:15.892995-0800 - Example 2 of column abv: 0.08% with score 0.0026932752225548033, label 0 and clean value '0.08'
+2021-01-20T18:06:15.907951-0800 - Example 3 of column abv: 0.077 with score 0.002640646183863282, label 1 and clean value '0.077'
+2021-01-20T18:06:15.933410-0800 - Example 4 of column abv: 0.067 with score 0.0026269154623150826, label 1 and clean value '0.067'
+2021-01-20T18:06:20.901635-0800 - Example 0 of column ibu: 80 with score 0.003232899121940136, label 1 and clean value '80'
+2021-01-20T18:06:20.996938-0800 - Example 1 of column ibu: 31 with score 0.002572674071416259, label 1 and clean value '31'
+2021-01-20T18:06:21.049675-0800 - Example 2 of column ibu: 45 with score 0.0019110359717160466, label 1 and clean value '45'
+2021-01-20T18:06:21.124447-0800 - Example 3 of column ibu: 20 with score 0.0018358267843723297, label 1 and clean value '20'
+2021-01-20T18:06:21.178716-0800 - Example 4 of column ibu: N/A with score 0.0016030161641538145, label 0 and clean value ''
+2021-01-20T18:06:26.325468-0800 - Example 0 of column brewery_id: 131 with score 0.002951954724267125, label 1 and clean value '131'
+2021-01-20T18:06:26.389051-0800 - Example 1 of column brewery_id: 82 with score 0.002845078706741333, label 1 and clean value '82'
+2021-01-20T18:06:26.428721-0800 - Example 2 of column brewery_id: 336 with score 0.002172747859731317, label 1 and clean value '336'
+2021-01-20T18:06:26.712081-0800 - Example 3 of column brewery_id: 24 with score 0.001941790571436286, label 1 and clean value '24'
+2021-01-20T18:06:26.852828-0800 - Example 4 of column brewery_id: 10 with score 0.0014624047325924039, label 1 and clean value '10'
+2021-01-20T18:06:32.120400-0800 - Example 0 of column brewery_name: Minhas Craft Brewery with score 0.003942188806831837, label 1 and clean value 'Minhas Craft Brewery'
+2021-01-20T18:06:32.134568-0800 - Example 1 of column brewery_name: Warped Wing Brewing Company with score 0.003837945638224483, label 1 and clean value 'Warped Wing Brewing Company'
+2021-01-20T18:06:32.174114-0800 - Example 2 of column brewery_name: Karbach Brewing Company with score 0.0034517680760473013, label 1 and clean value 'Karbach Brewing Company'
+2021-01-20T18:06:32.191809-0800 - Example 3 of column brewery_name: Wachusett Brewing Company with score 0.003356526605784893, label 1 and clean value 'Wachusett Brewing Company'
+2021-01-20T18:06:32.204732-0800 - Example 4 of column brewery_name: Manayunk Brewing Company with score 0.0032966388389468197, label 1 and clean value 'Manayunk Brewing Company'
+2021-01-20T18:06:37.612399-0800 - Example 0 of column city: San Luis Obispo CA with score 0.006837760098278522, label 0 and clean value 'San Luis Obispo'
+2021-01-20T18:06:37.614420-0800 - Example 1 of column city: Fuquay-Varina with score 0.006718384101986885, label 1 and clean value 'Fuquay-Varina'
+2021-01-20T18:06:37.617138-0800 - Example 2 of column city: Mt. Airy with score 0.00665833568200469, label 1 and clean value 'Mt. Airy'
+2021-01-20T18:06:37.623177-0800 - Example 3 of column city: O'Fallon with score 0.006657367572188377, label 1 and clean value 'O'Fallon'
+2021-01-20T18:06:37.625825-0800 - Example 4 of column city: Wilkes-Barre with score 0.006383562460541725, label 1 and clean value 'Wilkes-Barre'
+2021-01-20T18:06:42.749906-0800 - Example 0 of column state:  with score 0.004304391797631979, label 0 and clean value 'VA'
+2021-01-20T18:06:42.795029-0800 - Example 1 of column state: AL with score 0.0024171536788344388, label 1 and clean value 'AL'
+2021-01-20T18:06:42.804684-0800 - Example 2 of column state: GA with score 0.002252549864351749, label 1 and clean value 'GA'
+2021-01-20T18:06:42.871303-0800 - Example 3 of column state: MT with score 0.001968784024938941, label 1 and clean value 'MT'
+2021-01-20T18:06:42.915887-0800 - Example 4 of column state: TX with score 0.0019432969857007265, label 1 and clean value 'TX'
+2021-01-20T18:06:42.947496-0800 - Total recommendation time for step 0: 60.093236684799194
+2021-01-20T18:06:42.960498-0800 - Column index has 0 negatives and 2410 positives
+2021-01-20T18:06:42.972303-0800 - Column id has 0 negatives and 2410 positives
+2021-01-20T18:06:42.974921-0800 - Column beer_name has 0 negatives and 385 positives
+2021-01-20T18:06:42.976983-0800 - Column style has 0 negatives and 292 positives
+2021-01-20T18:06:42.984934-0800 - Column ounces has 1722 negatives and 0 positives
+2021-01-20T18:06:42.985046-0800 - Detecting column ounces with 1722 examples
+2021-01-20T18:06:42.987235-0800 - Transforming data ....
+2021-01-20T18:06:47.465069-0800 - Training set have size 3454 with 0 positives and 0 transformed negative
+2021-01-20T18:06:47.467350-0800 - Total transformation time: 4.480108737945557
+2021-01-20T18:07:59.926094-0800 - ==========================================================================
+2021-01-20T18:08:01.527564-0800 - Evaluating on beers...
+2021-01-20T18:08:02.341661-0800 - ----------------------------------------------------
+2021-01-20T18:08:02.341833-0800 - Running active learning step 0...
+2021-01-20T18:08:07.224613-0800 - Example 0 of column index: 149 with score 0.0016719071427360175, label 1 and clean value '149'
+2021-01-20T18:08:07.338578-0800 - Example 1 of column index: 1647 with score 0.00165953382384032, label 1 and clean value '1647'
+2021-01-20T18:08:07.681790-0800 - Example 2 of column index: 3 with score 0.0007033688598312438, label 1 and clean value '3'
+2021-01-20T18:08:07.745424-0800 - Example 3 of column index: 10 with score 0.0, label 1 and clean value '10'
+2021-01-20T18:08:07.825953-0800 - Example 4 of column index: 879 with score -9.998338987235911, label 1 and clean value '879'
+2021-01-20T18:08:13.285143-0800 - Example 0 of column id: 1182 with score 0.0013712793588638306, label 1 and clean value '1182'
+2021-01-20T18:08:13.481262-0800 - Example 1 of column id: 840 with score 0.0013192316982895134, label 1 and clean value '840'
+2021-01-20T18:08:13.587131-0800 - Example 2 of column id: 6 with score 0.0010898603359237313, label 1 and clean value '6'
+2021-01-20T18:08:13.623321-0800 - Example 3 of column id: 11 with score 0.0, label 1 and clean value '11'
+2021-01-20T18:08:13.668660-0800 - Example 4 of column id: 1883 with score -9.998681231285445, label 1 and clean value '1883'
+2021-01-20T18:08:18.805415-0800 - Example 0 of column beer_name: Truth with score 0.003743717214092612, label 1 and clean value 'Truth'
+2021-01-20T18:08:18.821093-0800 - Example 1 of column beer_name: Midnight Ryder with score 0.00304592726752162, label 1 and clean value 'Midnight Ryder'
+2021-01-20T18:08:18.850595-0800 - Example 2 of column beer_name: The Crisp with score 0.003023865399882197, label 1 and clean value 'The Crisp'
+2021-01-20T18:08:18.883958-0800 - Example 3 of column beer_name: Savannah Brown Ale with score 0.0027059714775532484, label 1 and clean value 'Savannah Brown Ale'
+2021-01-20T18:08:18.930706-0800 - Example 4 of column beer_name: Blur India Pale Ale with score 0.0025010509416460987, label 1 and clean value 'Blur India Pale Ale'
+2021-01-20T18:08:23.424343-0800 - Example 0 of column style: Belgian IPA with score 0.0031175343319773674, label 1 and clean value 'Belgian IPA'
+2021-01-20T18:08:23.438812-0800 - Example 1 of column style: Light Lager with score 0.0030194420833140607, label 1 and clean value 'Light Lager'
+2021-01-20T18:08:23.450666-0800 - Example 2 of column style: Irish Red Ale with score 0.002953464863821864, label 1 and clean value 'Irish Red Ale'
+2021-01-20T18:08:23.473938-0800 - Example 3 of column style: Extra Special / Strong Bitter (ESB) with score 0.0028103210497647524, label 1 and clean value 'Extra Special / Strong Bitter (ESB)'
+2021-01-20T18:08:23.486777-0800 - Example 4 of column style: American IPA with score 0.0027609101962298155, label 1 and clean value 'American IPA'
+2021-01-20T18:08:28.363188-0800 - Example 0 of column ounces: 12.0 oz with score 0.00503943581134081, label 0 and clean value '12'
+2021-01-20T18:08:28.454404-0800 - Example 1 of column ounces: 12.0 oz. with score 0.005001156125217676, label 0 and clean value '12'
+2021-01-20T18:08:28.551779-0800 - Example 2 of column ounces: 16.0 ounce with score 0.004860918503254652, label 0 and clean value '16'
+2021-01-20T18:08:28.596031-0800 - Example 3 of column ounces: 16.0 oz. with score 0.004801760893315078, label 0 and clean value '16'
+2021-01-20T18:08:28.658333-0800 - Example 4 of column ounces: 12.0 ounce with score 0.004772453103214502, label 0 and clean value '12'
+2021-01-20T18:08:33.494756-0800 - Example 0 of column abv:  with score 0.00672931270673871, label 1 and clean value ''
+2021-01-20T18:08:33.511725-0800 - Example 1 of column abv: 0.046 with score 0.00343131204135716, label 1 and clean value '0.046'
+2021-01-20T18:08:33.610102-0800 - Example 2 of column abv: 0.048% with score 0.003331222338601947, label 0 and clean value '0.048'
+2021-01-20T18:08:33.677398-0800 - Example 3 of column abv: 0.08% with score 0.0031430681701749568, label 0 and clean value '0.08'
+2021-01-20T18:08:33.713908-0800 - Example 4 of column abv: 0.09 with score 0.0026778795290738344, label 1 and clean value '0.09'
+2021-01-20T18:08:38.721228-0800 - Example 0 of column ibu: 69 with score 0.002758146030828357, label 1 and clean value '69'
+2021-01-20T18:08:38.786968-0800 - Example 1 of column ibu: 34 with score 0.002561770379543305, label 1 and clean value '34'
+2021-01-20T18:08:38.832073-0800 - Example 2 of column ibu: 20 with score 0.002045014640316367, label 1 and clean value '20'
+2021-01-20T18:08:38.856221-0800 - Example 3 of column ibu: 30 with score 0.0020075873471796517, label 1 and clean value '30'
+2021-01-20T18:08:38.930212-0800 - Example 4 of column ibu: N/A with score 0.0009702149545773864, label 0 and clean value ''
+2021-01-20T18:08:43.868574-0800 - Example 0 of column brewery_id: 171 with score 0.0027048850897699594, label 1 and clean value '171'
+2021-01-20T18:08:43.950064-0800 - Example 1 of column brewery_id: 61 with score 0.00235767662525177, label 1 and clean value '61'
+2021-01-20T18:08:44.017877-0800 - Example 2 of column brewery_id: 206 with score 0.0021966968197375536, label 1 and clean value '206'
+2021-01-20T18:08:44.344301-0800 - Example 3 of column brewery_id: 24 with score 0.0021524147596210237, label 1 and clean value '24'
+2021-01-20T18:08:44.461512-0800 - Example 4 of column brewery_id: 10 with score 0.0015032322844490409, label 1 and clean value '10'
+2021-01-20T18:08:49.823271-0800 - Example 0 of column brewery_name: 18th Street Brewery with score 0.0037875787820667033, label 1 and clean value '18th Street Brewery'
+2021-01-20T18:08:49.829442-0800 - Example 1 of column brewery_name: Karbach Brewing Company with score 0.003613778855651617, label 1 and clean value 'Karbach Brewing Company'
+2021-01-20T18:08:49.837473-0800 - Example 2 of column brewery_name: Wachusett Brewing Company with score 0.0035744390916079283, label 1 and clean value 'Wachusett Brewing Company'
+2021-01-20T18:08:49.843191-0800 - Example 3 of column brewery_name: Manayunk Brewing Company with score 0.0035519010853022337, label 1 and clean value 'Manayunk Brewing Company'
+2021-01-20T18:08:49.852309-0800 - Example 4 of column brewery_name: Uinta Brewing Company with score 0.003492844291031361, label 1 and clean value 'Uinta Brewing Company'
+2021-01-20T18:08:54.868385-0800 - Example 0 of column city: Fuquay-Varina with score 0.006216542795300485, label 1 and clean value 'Fuquay-Varina'
+2021-01-20T18:08:54.871689-0800 - Example 1 of column city: Mt. Airy with score 0.006163438316434622, label 1 and clean value 'Mt. Airy'
+2021-01-20T18:08:54.877691-0800 - Example 2 of column city: O'Fallon with score 0.006127471104264259, label 1 and clean value 'O'Fallon'
+2021-01-20T18:08:54.880346-0800 - Example 3 of column city: Wilkes-Barre with score 0.00586336525157094, label 1 and clean value 'Wilkes-Barre'
+2021-01-20T18:08:54.882502-0800 - Example 4 of column city: Bucryus with score 0.005742650944739579, label 1 and clean value 'Bucryus'
+2021-01-20T18:08:59.614934-0800 - Example 0 of column state:  with score 0.003303725505247712, label 0 and clean value 'NY'
+2021-01-20T18:08:59.636353-0800 - Example 1 of column state: AL with score 0.002587345661595464, label 1 and clean value 'AL'
+2021-01-20T18:08:59.641949-0800 - Example 2 of column state: TX with score 0.002137780888006091, label 1 and clean value 'TX'
+2021-01-20T18:08:59.663297-0800 - Example 3 of column state: MT with score 0.0020783990621566764, label 1 and clean value 'MT'
+2021-01-20T18:08:59.694805-0800 - Example 4 of column state: WY with score 0.001929142395965755, label 1 and clean value 'WY'
+2021-01-20T18:08:59.742505-0800 - Total recommendation time for step 0: 57.4008584022522
+2021-01-20T18:08:59.753650-0800 - Column index has 0 negatives and 2410 positives
+2021-01-20T18:08:59.764288-0800 - Column id has 0 negatives and 2410 positives
+2021-01-20T18:08:59.769278-0800 - Column beer_name has 0 negatives and 986 positives
+2021-01-20T18:08:59.772375-0800 - Column style has 0 negatives and 553 positives
+2021-01-20T18:08:59.780695-0800 - Column ounces has 1862 negatives and 0 positives
+2021-01-20T18:08:59.780837-0800 - Detecting column ounces with 1862 examples
+2021-01-20T18:08:59.782925-0800 - Transforming data ....
+2021-01-20T18:09:05.607353-0800 - Training set have size 3734 with 0 positives and 0 transformed negative
+2021-01-20T18:09:05.610783-0800 - Total transformation time: 5.827851057052612
+2021-01-20T18:09:15.948035-0800 - Total training time: 9.283924102783203
+2021-01-20T18:09:16.389751-0800 - Total prediction time: 0.4410858154296875
+2021-01-20T18:09:16.406750-0800 - Column abv has 262 negatives and 574 positives
+2021-01-20T18:09:16.406910-0800 - Detecting column abv with 836 examples
+2021-01-20T18:09:16.408924-0800 - Transforming data ....
+2021-01-20T18:09:24.971574-0800 - Training set have size 1574 with 0 positives and 0 transformed negative
+2021-01-20T18:09:24.973490-0800 - Total transformation time: 8.564562320709229
+2021-01-20T18:09:29.807087-0800 - Total training time: 4.520559549331665
+2021-01-20T18:09:30.185741-0800 - Total prediction time: 0.3779327869415283
+2021-01-20T18:09:30.234968-0800 - Column ibu has 1005 negatives and 1316 positives
+2021-01-20T18:09:30.235124-0800 - Detecting column ibu with 2321 examples
+2021-01-20T18:09:30.236983-0800 - Transforming data ....

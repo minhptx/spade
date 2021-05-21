@@ -24,7 +24,7 @@ class SingletonLoader:
     @staticmethod
     def get_tokenizer():
         if SingletonLoader.tokenizer is None:
-            SingletonLoader.tokenizer = get_tokenizer("spacy", language="en_core_web_lg")
+            SingletonLoader.tokenizer = get_tokenizer("spacy")
         return SingletonLoader.tokenizer
 
     @staticmethod

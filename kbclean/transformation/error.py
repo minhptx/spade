@@ -7,7 +7,6 @@ from collections import Counter
 from difflib import SequenceMatcher
 from logging import error
 
-import modin
 import numpy as np
 import pandas as pd
 import regex as re

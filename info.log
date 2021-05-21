@@ -1,0 +1,69 @@
+2021-01-20T17:06:09.492063-0800 - ==========================================================================
+2021-01-20T17:08:56.931214-0800 - ==========================================================================
+2021-01-20T17:10:53.840754-0800 - ==========================================================================
+2021-01-20T17:10:56.436550-0800 - Evaluating on flights...
+2021-01-20T17:10:57.591256-0800 - ----------------------------------------------------
+2021-01-20T17:10:57.591452-0800 - Running active learning step 0...
+2021-01-20T17:11:40.999492-0800 - ==========================================================================
+2021-01-20T17:11:44.079653-0800 - Evaluating on flights...
+2021-01-20T17:11:45.313187-0800 - ----------------------------------------------------
+2021-01-20T17:11:45.313421-0800 - Running active learning step 0...
+2021-01-20T17:13:16.536273-0800 - ==========================================================================
+2021-01-20T17:13:19.211161-0800 - Evaluating on beers...
+2021-01-20T17:13:20.094583-0800 - ----------------------------------------------------
+2021-01-20T17:13:20.094784-0800 - Running active learning step 0...
+2021-01-20T17:52:15.845278-0800 - ==========================================================================
+2021-01-20T17:55:40.274154-0800 - ==========================================================================
+2021-01-20T17:55:41.978072-0800 - Evaluating on beers...
+2021-01-20T17:55:42.830685-0800 - ----------------------------------------------------
+2021-01-20T17:55:42.830848-0800 - Running active learning step 0...
+2021-01-20T17:56:39.910037-0800 - Total recommendation time for step 0: 57.079346656799316
+2021-01-20T17:56:39.927759-0800 - Column index has 0 negatives and 2410 positives
+2021-01-20T17:56:39.945102-0800 - Column id has 0 negatives and 2410 positives
+2021-01-20T17:56:39.952898-0800 - Column beer_name has 0 negatives and 986 positives
+2021-01-20T17:56:39.955042-0800 - Column style has 0 negatives and 145 positives
+2021-01-20T17:56:39.968467-0800 - Column ounces has 1862 negatives and 0 positives
+2021-01-20T17:56:39.968631-0800 - Detecting column ounces with 1862 examples
+2021-01-20T17:56:39.971449-0800 - Transforming data ....
+2021-01-20T17:56:44.923771-0800 - Training set have size 3734 with 0 positives and 0 transformed negative
+2021-01-20T17:56:44.926979-0800 - Total transformation time: 4.9555206298828125
+2021-01-20T18:05:39.310697-0800 - ==========================================================================
+2021-01-20T18:05:41.986632-0800 - Evaluating on beers...
+2021-01-20T18:05:42.854251-0800 - ----------------------------------------------------
+2021-01-20T18:05:42.854500-0800 - Running active learning step 0...
+2021-01-20T18:06:42.947496-0800 - Total recommendation time for step 0: 60.093236684799194
+2021-01-20T18:06:42.960498-0800 - Column index has 0 negatives and 2410 positives
+2021-01-20T18:06:42.972303-0800 - Column id has 0 negatives and 2410 positives
+2021-01-20T18:06:42.974921-0800 - Column beer_name has 0 negatives and 385 positives
+2021-01-20T18:06:42.976983-0800 - Column style has 0 negatives and 292 positives
+2021-01-20T18:06:42.984934-0800 - Column ounces has 1722 negatives and 0 positives
+2021-01-20T18:06:42.985046-0800 - Detecting column ounces with 1722 examples
+2021-01-20T18:06:42.987235-0800 - Transforming data ....
+2021-01-20T18:06:47.465069-0800 - Training set have size 3454 with 0 positives and 0 transformed negative
+2021-01-20T18:06:47.467350-0800 - Total transformation time: 4.480108737945557
+2021-01-20T18:07:59.926094-0800 - ==========================================================================
+2021-01-20T18:08:01.527564-0800 - Evaluating on beers...
+2021-01-20T18:08:02.341661-0800 - ----------------------------------------------------
+2021-01-20T18:08:02.341833-0800 - Running active learning step 0...
+2021-01-20T18:08:59.742505-0800 - Total recommendation time for step 0: 57.4008584022522
+2021-01-20T18:08:59.753650-0800 - Column index has 0 negatives and 2410 positives
+2021-01-20T18:08:59.764288-0800 - Column id has 0 negatives and 2410 positives
+2021-01-20T18:08:59.769278-0800 - Column beer_name has 0 negatives and 986 positives
+2021-01-20T18:08:59.772375-0800 - Column style has 0 negatives and 553 positives
+2021-01-20T18:08:59.780695-0800 - Column ounces has 1862 negatives and 0 positives
+2021-01-20T18:08:59.780837-0800 - Detecting column ounces with 1862 examples
+2021-01-20T18:08:59.782925-0800 - Transforming data ....
+2021-01-20T18:09:05.607353-0800 - Training set have size 3734 with 0 positives and 0 transformed negative
+2021-01-20T18:09:05.610783-0800 - Total transformation time: 5.827851057052612
+2021-01-20T18:09:15.948035-0800 - Total training time: 9.283924102783203
+2021-01-20T18:09:16.389751-0800 - Total prediction time: 0.4410858154296875
+2021-01-20T18:09:16.406750-0800 - Column abv has 262 negatives and 574 positives
+2021-01-20T18:09:16.406910-0800 - Detecting column abv with 836 examples
+2021-01-20T18:09:16.408924-0800 - Transforming data ....
+2021-01-20T18:09:24.971574-0800 - Training set have size 1574 with 0 positives and 0 transformed negative
+2021-01-20T18:09:24.973490-0800 - Total transformation time: 8.564562320709229
+2021-01-20T18:09:29.807087-0800 - Total training time: 4.520559549331665
+2021-01-20T18:09:30.185741-0800 - Total prediction time: 0.3779327869415283
+2021-01-20T18:09:30.234968-0800 - Column ibu has 1005 negatives and 1316 positives
+2021-01-20T18:09:30.235124-0800 - Detecting column ibu with 2321 examples
+2021-01-20T18:09:30.236983-0800 - Transforming data ....

@@ -19,14 +19,8 @@ from kbclean.utils.inout import load_config
 from loguru import logger
 from pandarallel import pandarallel
 
-import neptune
-
 pandarallel.initialize()
 
-neptune.init(
-    project_qualified_name="clapika/spade",
-    api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiYzYwZWY5ZjYtOTAxOS00MzhlLTlmY2EtZjRiMDkxNDhiYjQ3In0=",
-)
 
 # Create experiment
 
@@ -79,10 +73,10 @@ def cli():
     "--method", "-m", help="Method for outlier detection", default="deep_clean"
 )
 @click.option("--interactive", "-i", is_flag=True, help="Interactive detection")
-@click.option("--num_gpus", help="Number of GPUs used", default=1)
+@click.option("--gpus", help="GPUs used for training", default="0")
 @click.option("-k", help="Number of iterations", default=2)
 @click.option("-e", help="Number of examples per iteration", default=2)
-def evaluate(data_path, config_path, output_path, method, interactive, num_gpus, k, e):
+def evaluate(data_path, config_path, output_path, method, interactive, gpus, k, e):
 
     evaluator = Evaluator()
 
@@ -91,17 +85,11 @@ def evaluate(data_path, config_path, output_path, method, interactive, num_gpus,
     hparams = load_config(config_path)
 
     detector = name2model[method](getattr(hparams, method))
-    getattr(hparams, method).num_gpus = num_gpus
+    getattr(hparams, method).gpus = gpus
     getattr(hparams, method).num_examples = e
     getattr(hparams, method).debug_dir = debug_dir
 
     Path(debug_dir).mkdir(parents=True, exist_ok=True)
-    neptune.create_experiment(
-        Path(data_path).name,
-        params=vars(getattr(hparams, method).model),
-        tags=[method],
-        upload_source_files=["*.py"],
-    )
 
     if interactive:
         evaluator.ievaluate(

@@ -1,4 +1,3 @@
-import neptune
 from kbclean.recommendation.feedback.oracle import Oracle
 from operator import index
 from pathlib import Path
@@ -118,12 +117,12 @@ class PSLearner:
 
         feature_matrix = np.concatenate(feature_arrs, axis=1).astype(float)
         col_feature_df = pd.DataFrame(feature_matrix, dtype=str, columns=self.feature_names)
-        neptune.log_text("propagate_level", str(self.hparams.propagate_level))
         if self.hparams.propagate_level == 1:
             col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 2))).agg("|||".join, axis=1)
         elif self.hparams.propagate_level == 2:
             col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x), 3))).agg("|||".join, axis=1)
         elif self.hparams.propagate_level == 3:
+            print("333333333")
             col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x) / 2, 2))).agg("|||".join, axis=1)
         elif self.hparams.propagate_level == 4:
             col_feature_df["feature_str"] = col_feature_df.applymap(lambda x: str(round(float(x) * 2, 2))).agg("|||".join, axis=1)   
@@ -169,7 +168,7 @@ class PSLearner:
                     Partition.OBSERVATIONS, str(file_path)
                 )
 
-        result = self.col2label_model[col].infer(cleanup_temp=True, additional_cli_optons=["--postgres", "psl"])
+        result = self.col2label_model[col].infer(cleanup_temp=True)
         result = {pred.name(): values for pred, values in result.items()}
         target_result = result["TARGET"]
         target_result = target_result.sort_values(by=[0])

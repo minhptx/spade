@@ -53,7 +53,7 @@ class CharAvgFT(BaseFeaturizer):
 
 class WordSeqFT(BaseFeaturizer):
     def __init__(self):
-        self.tokenizer = SingletonLoader.get_tokenizer()
+        self.tokenizer = get_tokenizer("spacy")
 
     def fit(self, dirty_df: pd.DataFrame, col: str):
         pass
@@ -77,7 +77,7 @@ class WordSeqFT(BaseFeaturizer):
 
 class WordAvgFT(BaseFeaturizer):
     def __init__(self):
-        self.tokenizer = SingletonLoader.get_tokenizer()
+        self.tokenizer = get_tokenizer("spacy")
 
     def fit(self, dirty_df: pd.DataFrame, col: str):
         pass
@@ -104,7 +104,7 @@ class WordAvgFT(BaseFeaturizer):
 
 class CoValueAvgFT(BaseFeaturizer):
     def __init__(self):
-        self.tokenizer = SingletonLoader.get_tokenizer()
+        self.tokenizer = get_tokenizer("spacy")
 
     def fit(self, dirty_df: pd.DataFrame, col: str):
         pass

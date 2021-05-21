@@ -2,8 +2,10 @@ SPADE: A Semi-supervised Probabilistic Approach for Detecting Errors in Tables
 -----------------------------------------------------------------------------
 ## Setting Up
 ```
-cat requirements.txt | xargs -n 1 pip install
+cat requirements.txt | xargs -n 1 pip install  # prevent pip to check version dependency
+python -m spacy download en
 ```
+
 ## Running Experiments
 
 ### General command: 
@@ -12,16 +14,18 @@ error_detection.py evaluate [OPTIONS]
 ```
 ```
 Options:
-  -d, --data_path TEXT    Path to dataset
+  -d, --data_path TEXT    Path to dataset (example: data/raha/test/beers)
   -c, --config_path TEXT  Path to configuration file (default: config/)
   -o, --output_path TEXT  Path to output directory (default: output/)
   -m, --method TEXT       Method for outlier detection
   -i, --interactive       Interactive detection
-  --num_gpus INTEGER      Number of GPUs used
+  --gpus TEXT             GPUs used for training (default: "0" --- examples: "1,2,3")
   -k INTEGER              Number of iterations
   -e INTEGER              Number of examples per iteration
   --help                  Show this message and exit.
 ```
+
+You can use --gpus "1,2,3" to indicates 
 
 ### Configuration
 Create a config.yml file inside the directory `[config_path]/[method]`.

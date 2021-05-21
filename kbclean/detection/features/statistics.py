@@ -6,8 +6,6 @@ from kbclean.detection.features.base import BaseFeaturizer
 from kbclean.utils.data.helpers import str2regex
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 import pandas as pd
-from ftfy import fix_text
-
 
 class StatsFeaturizer(BaseFeaturizer):
     def __init__(self):
