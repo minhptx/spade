@@ -27,7 +27,7 @@ Options:
   --help                  Show this message and exit.
 ```
 
-You can use --gpus "1,2,3" to indicates 
+You can use --gpus "1,2,3" to indicate the GPUs you are using
 
 ### Configuration
 Create a config.yml file inside the directory `[config_path]/[method]`.
