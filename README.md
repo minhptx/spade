@@ -42,7 +42,7 @@ propagate_level: 1 # (epsilon values. see ReadMe for actual values)
 ```
 
 ### Datasets
-Datasets can be downloaded here: 
+Datasets can be downloaded [here](https://github.com/minhptx/spade/tree/master/data/test/raha)
 
 ### Commands to replicate result tables in the paper:
 1. Table 3, Figure 3, Figure 4: 20 examples = 4 iterations * 5 examples/iteration
