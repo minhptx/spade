@@ -1,6 +1,6 @@
 SPADE: A Semi-supervised Probabilistic Approach for Detecting Errors in Tables
 -----------------------------------------------------------------------------
-This is the public repository for SPADE (old name: B-Clean). SPADE is used as a Data Transformation module in [MINT](http://mint-project.info/). Our paper about SPADE is accepted to IJCAI 2021. 
+This is the public repository for SPADE (old name: B-Clean). SPADE is used as a Data Transformation module in [MINT](http://mint-project.info/). Our paper about SPADE is accepted to [IJCAI 2021](https://www.ijcai.org/proceedings/2021/488). 
 
 ## Setting Up
 ```
